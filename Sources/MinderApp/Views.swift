@@ -1,0 +1,1324 @@
+import SwiftUI
+import MinderCore
+
+private enum LoopTheme {
+    static let pageFill = Color(nsColor: .windowBackgroundColor)
+    static let elevatedFill = Color(nsColor: .controlBackgroundColor)
+    static let controlFill = Color(nsColor: .textBackgroundColor)
+    static let secondaryFill = Color(nsColor: .textBackgroundColor)
+    static let text = Color(nsColor: .labelColor)
+    static let secondaryText = Color(nsColor: .secondaryLabelColor)
+    static let tertiaryText = Color(nsColor: .tertiaryLabelColor)
+    static let separator = Color(nsColor: .separatorColor)
+
+    static let blue = Color(red: 0.0, green: 0.38, blue: 0.82)
+    static let green = Color(red: 0.13, green: 0.50, blue: 0.22)
+    static let orange = Color(red: 0.70, green: 0.33, blue: 0.04)
+    static let purple = Color(red: 0.43, green: 0.28, blue: 0.70)
+    static let teal = Color(red: 0.05, green: 0.46, blue: 0.43)
+
+    static let incomingBubble = dynamicColor(
+        light: NSColor(calibratedRed: 233 / 255, green: 233 / 255, blue: 235 / 255, alpha: 1),
+        dark: NSColor(calibratedRed: 58 / 255, green: 58 / 255, blue: 60 / 255, alpha: 1)
+    )
+    static let outgoingBubble = blue
+    static let completedFill = dynamicColor(
+        light: NSColor(calibratedRed: 238 / 255, green: 248 / 255, blue: 241 / 255, alpha: 1),
+        dark: NSColor(calibratedRed: 25 / 255, green: 54 / 255, blue: 38 / 255, alpha: 1)
+    )
+
+    private static func dynamicColor(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        })
+    }
+}
+
+struct InboxView: View {
+    @ObservedObject var model: MinderViewModel
+    @ObservedObject var settingsModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            content
+            if model.selectedTab == .queue {
+                Divider()
+                footer
+            }
+        }
+        .frame(minWidth: 720, idealWidth: 760, minHeight: 720, idealHeight: 820)
+        .background(LoopTheme.pageFill)
+        .sheet(isPresented: $model.isShowingGeminiDiagnostics) {
+            GeminiDiagnosticsView(model: model)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checklist.checked")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(LoopTheme.blue, in: RoundedRectangle(cornerRadius: 8))
+                Text("Loop")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(LoopTheme.text)
+                Text("\(model.activeQueueCount)")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(LoopTheme.blue)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(LoopTheme.blue.opacity(0.12), in: Capsule())
+            }
+
+            Picker("View", selection: $model.selectedTab) {
+                ForEach(LoopMainTab.allCases) { tab in
+                    Label(tab.title, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                if model.isShowingProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button {
+                    model.beginManualItem()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("Add note or to-do")
+
+                Button {
+                    model.generateSuggestions()
+                } label: {
+                    Label("Generate", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(LoopTheme.blue)
+                .disabled(!model.canGenerateSuggestions)
+                .help("Generate suggestions")
+
+                Button {
+                    model.openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Settings")
+
+                Button {
+                    model.openQueueWindow()
+                } label: {
+                    Image(systemName: "macwindow")
+                }
+                .help("Open queue window")
+
+                Button {
+                    model.quitLoop()
+                } label: {
+                    Image(systemName: "power")
+                }
+                .help("Quit Loop")
+            }
+            .controlSize(.small)
+        }
+        .padding(16)
+        .background(LoopTheme.elevatedFill)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.selectedTab {
+        case .queue:
+            queue
+        case .settings:
+            LoopSettingsPanelView(model: settingsModel)
+        }
+    }
+
+    private var queue: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                if model.isComposingManualItem {
+                    ManualQueueComposerView(model: model)
+                }
+
+                if model.queueItems.isEmpty && !model.isComposingManualItem {
+                    EmptyStateView(model: model)
+                } else {
+                    ForEach(model.queueItems) { item in
+                        switch item {
+                        case .suggestion(let card):
+                            LoopSuggestionCardView(
+                                card: card,
+                                toggleExpanded: { model.toggleExpanded(item) },
+                                complete: { model.complete(card.suggestion) }
+                            )
+                        case .manual(let manualItem):
+                            ManualQueueItemCardView(item: manualItem) {
+                                model.complete(manualItem)
+                            }
+                        }
+                    }
+                }
+
+                if !model.recentCompletedQueueItems.isEmpty {
+                    RecentlyCompletedSection(
+                        items: model.recentCompletedQueueItems,
+                        undo: { model.undoCompleted($0) }
+                    )
+                }
+            }
+            .padding(12)
+        }
+        .background(LoopTheme.pageFill)
+    }
+
+    private var footer: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Label(messagesFooterText, systemImage: "message")
+                .font(.caption)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .lineLimit(2)
+
+            Spacer()
+
+            Text(model.statusMessage)
+                .font(.caption)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(12)
+        .background(LoopTheme.elevatedFill)
+    }
+
+    private var messagesFooterText: String {
+        if let source = model.appleMessagesSource, let sync = source.lastSyncAt {
+            return "\(model.appleMessagesCount) messages · \(sync.relativeLabel)"
+        }
+        return "\(model.appleMessagesCount) messages"
+    }
+}
+
+private struct LoopSuggestionCardView: View {
+    var card: LoopSuggestionCard
+    var toggleExpanded: () -> Void
+    var complete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: card.suggestion.type.systemImage)
+                            .font(.caption.weight(.bold))
+                        Text(card.suggestion.type.displayName)
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(card.suggestion.type.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(card.suggestion.type.tint.opacity(0.12), in: Capsule())
+
+                    Text(card.suggestion.evidence.threadTitle)
+                        .font(.headline)
+                        .foregroundStyle(LoopTheme.text)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(card.suggestion.evidence.sourceTimestamp.detailLabel)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(LoopTheme.secondaryText)
+                        .lineLimit(1)
+
+                    Button {
+                        complete()
+                    } label: {
+                        Label("Complete", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(card.suggestion.type.tint)
+                    .controlSize(.small)
+                    .disabled(card.suggestion.state == .completed)
+                }
+            }
+
+            Text(card.suggestion.title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(LoopTheme.text)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(card.suggestion.action.text)
+                .font(.caption)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                Image(systemName: card.isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                Text(card.isExpanded ? "Hide conversation" : "Show conversation")
+                    .font(.caption.weight(.medium))
+            }
+            .foregroundStyle(LoopTheme.blue)
+
+            if card.isExpanded {
+                ConversationPreview(messages: card.recentMessages)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(card.suggestion.type.tint.opacity(0.22), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggleExpanded)
+    }
+}
+
+private struct ManualQueueItemCardView: View {
+    var item: ManualQueueItem
+    var complete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.kind.systemImage)
+                            .font(.caption.weight(.bold))
+                        Text(item.kind.displayName)
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(item.kind.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(item.kind.tint.opacity(0.12), in: Capsule())
+
+                    Text(item.title)
+                        .font(.headline)
+                        .foregroundStyle(LoopTheme.text)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(item.createdAt.detailLabel)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(LoopTheme.secondaryText)
+                        .lineLimit(1)
+
+                    Button {
+                        complete()
+                    } label: {
+                        Label("Complete", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(item.kind.tint)
+                    .controlSize(.small)
+                }
+            }
+
+            if let body = item.body {
+                Text(body)
+                    .font(.caption)
+                    .foregroundStyle(LoopTheme.secondaryText)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(item.kind.tint.opacity(0.20), lineWidth: 1)
+        }
+    }
+}
+
+private struct ManualQueueComposerView: View {
+    @ObservedObject var model: MinderViewModel
+    @State private var draftKind: ManualQueueItemKind = .todo
+    @State private var draftTitle = ""
+    @State private var draftBody = ""
+
+    private var canSave: Bool {
+        !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Picker("Kind", selection: $draftKind) {
+                    ForEach(ManualQueueItemKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+
+                Spacer()
+
+                Button("Cancel") {
+                    model.cancelManualItem()
+                }
+                .controlSize(.small)
+
+                Button("Save") {
+                    model.saveManualItem(kind: draftKind, title: draftTitle, body: draftBody)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(LoopTheme.blue)
+                .controlSize(.small)
+                .disabled(!canSave || model.isWorking)
+            }
+
+            TextField("Title", text: $draftTitle)
+                .textFieldStyle(.roundedBorder)
+
+            TextEditor(text: $draftBody)
+                .font(.body)
+                .frame(minHeight: 72, maxHeight: 112)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(alignment: .topLeading) {
+                    if draftBody.isEmpty {
+                        Text("Notes")
+                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 14)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .padding(12)
+        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(LoopTheme.blue.opacity(0.25), lineWidth: 1)
+        }
+        .onAppear {
+            draftKind = model.manualDraftKind
+            draftTitle = model.manualDraftTitle
+            draftBody = model.manualDraftBody
+        }
+    }
+}
+
+private struct RecentlyCompletedSection: View {
+    var items: [LoopCompletedQueueItem]
+    var undo: (LoopCompletedQueueItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recently Completed")
+                .font(.caption.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 8) {
+                ForEach(items) { item in
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(LoopTheme.green)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.title)
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(LoopTheme.text)
+                                .lineLimit(1)
+                            Text(item.updatedAt.relativeLabel)
+                                .font(.caption)
+                                .foregroundStyle(LoopTheme.secondaryText)
+                        }
+                        Spacer()
+                        Button("Undo") {
+                            undo(item)
+                        }
+                        .controlSize(.small)
+                        .tint(LoopTheme.green)
+                    }
+                    .padding(10)
+                    .background(LoopTheme.completedFill, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(LoopTheme.green.opacity(0.18), lineWidth: 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ConversationPreview: View {
+    var messages: [Message]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if messages.isEmpty {
+                Text("No recent messages available.")
+                    .font(.caption)
+                    .foregroundStyle(LoopTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(messages) { message in
+                    MessageBubbleRow(message: message)
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
+private struct MessageBubbleRow: View {
+    var message: Message
+
+    var body: some View {
+        VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 3) {
+            HStack {
+                if message.isFromUser { Spacer(minLength: 64) }
+                Text(message.body.isEmpty ? "Attachment" : message.body)
+                    .font(.caption)
+                    .foregroundStyle(message.isFromUser ? .white : LoopTheme.text)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(message.isFromUser ? LoopTheme.outgoingBubble : LoopTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
+                if !message.isFromUser { Spacer(minLength: 64) }
+            }
+
+            Text("\(message.isFromUser ? "You" : message.senderLabel) · \(message.sentAt.relativeLabel)")
+                .font(.caption2)
+                .foregroundStyle(LoopTheme.tertiaryText)
+                .lineLimit(1)
+        }
+    }
+}
+
+struct EmptyStateView: View {
+    @ObservedObject var model: MinderViewModel
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "message.badge")
+                .font(.system(size: 36, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 64, height: 64)
+                .background(LoopTheme.blue, in: RoundedRectangle(cornerRadius: 16))
+            Text("Nothing to complete")
+                .font(.headline)
+                .foregroundStyle(LoopTheme.text)
+            Text(model.messages.isEmpty ? "No messages checked yet." : "All caught up.")
+                .font(.caption)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 280)
+            Button {
+                model.generateSuggestions()
+            } label: {
+                Label("Generate", systemImage: "wand.and.stars")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(LoopTheme.blue)
+            .controlSize(.small)
+            .disabled(!model.canGenerateSuggestions)
+        }
+        .padding(.vertical, 52)
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(LoopTheme.separator, lineWidth: 1)
+        }
+    }
+}
+
+private struct GeminiDiagnosticsView: View {
+    @ObservedObject var model: MinderViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            if model.geminiDiagnostics.isEmpty && model.appleMessagesTextDiagnostics == nil {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 34, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text("No diagnostics recorded")
+                        .font(.headline)
+                    Text("Run a Messages text check or Generate with Gemini enabled to record redacted status and counts.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 360)
+                    Spacer()
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        if let diagnostics = model.appleMessagesTextDiagnostics {
+                            AppleMessagesTextDiagnosticRow(diagnostics: diagnostics)
+                        }
+                        ForEach(model.geminiDiagnostics) { run in
+                            GeminiDiagnosticRow(run: run)
+                        }
+                    }
+                    .padding(14)
+                }
+            }
+        }
+        .frame(width: 720, height: 560)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            model.refreshGeminiDiagnostics()
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Diagnostics", systemImage: "stethoscope")
+                    .font(.headline)
+                Text("Redacted metadata only. No message bodies or raw Gemini payloads are stored.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                model.runAppleMessagesTextDiagnostic()
+            } label: {
+                Label("Check Messages Text", systemImage: "message.badge.waveform")
+            }
+            .disabled(model.isWorking)
+
+            Button {
+                model.replayLatestGeminiRun()
+            } label: {
+                Label("Replay Latest", systemImage: "play.circle")
+            }
+            .disabled(model.geminiDiagnostics.isEmpty || model.isWorking)
+
+            Button {
+                model.copyLatestGeminiDiagnostics()
+            } label: {
+                Label("Copy Redacted Diagnostics", systemImage: "doc.on.doc")
+            }
+            .disabled(model.geminiDiagnostics.isEmpty)
+
+            Button(role: .destructive) {
+                model.clearGeminiDiagnostics()
+            } label: {
+                Label("Clear Diagnostics", systemImage: "trash")
+            }
+            .disabled(model.geminiDiagnostics.isEmpty || model.isWorking)
+
+            Button("Done") {
+                model.isShowingGeminiDiagnostics = false
+            }
+            .keyboardShortcut(.cancelAction)
+        }
+        .controlSize(.small)
+        .padding(14)
+    }
+}
+
+private struct AppleMessagesTextDiagnosticRow: View {
+    var diagnostics: AppleMessagesTextDiagnostics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                StatusPill(text: "Messages Text", systemImage: "message", tint: .accentColor)
+                Spacer()
+                Text("Since \(diagnostics.checkedSince.detailLabel)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], alignment: .leading, spacing: 8) {
+                MetricPill(title: "sent with plain text", value: "\(diagnostics.outgoingWithPlainText)", systemImage: "text.bubble")
+                MetricPill(title: "sent without plain text", value: "\(diagnostics.outgoingWithoutPlainText)", systemImage: "exclamationmark.bubble")
+                MetricPill(title: "sent with attributedBody", value: "\(diagnostics.outgoingWithAttributedBody)", systemImage: "doc.richtext")
+                MetricPill(title: "recoverable sent rows", value: "\(diagnostics.outgoingWithoutPlainTextWithAttributedBody)", systemImage: "arrow.triangle.2.circlepath")
+                MetricPill(title: "attachment rows", value: "\(diagnostics.attachmentRows)", systemImage: "paperclip")
+                MetricPill(title: "visible non-text rows", value: "\(diagnostics.visibleNonTextRows)", systemImage: "ellipsis.bubble")
+            }
+
+            Text("Counts only. Loop does not show or store raw diagnostic message bodies here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct GeminiDiagnosticRow: View {
+    var run: GeminiDiagnosticRun
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                StatusPill(text: run.outcome.displayName, systemImage: run.outcome.systemImage, tint: run.outcome.tint)
+                StatusPill(text: run.errorCategory.displayName, systemImage: "tag", tint: run.outcome.tint)
+                if let status = run.httpStatus {
+                    StatusPill(text: "HTTP \(status)", systemImage: "network", tint: status >= 400 ? .red : .green)
+                }
+                if run.fallbackUsed {
+                    StatusPill(text: "Fallback", systemImage: "arrow.uturn.left", tint: .orange)
+                }
+                Spacer()
+                Text(run.createdAt.detailLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                MetricPill(title: "Candidates", value: "\(run.candidateCount)", systemImage: "square.stack.3d.up")
+                MetricPill(title: "Decisions", value: "\(run.decisionCount)", systemImage: "checklist")
+                MetricPill(title: "Ranked", value: "\(run.rankedCount)", systemImage: "line.3.horizontal.decrease")
+                MetricPill(title: "Saved", value: "\(run.savedCount)", systemImage: "tray.and.arrow.down")
+                MetricPill(title: "ms", value: "\(run.durationMilliseconds)", systemImage: "timer")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                MetadataRow(title: "Model", value: run.model)
+                MetadataRow(title: "Run ID", value: run.id)
+            }
+
+            Text(run.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    diagnosticIDBlock(title: "Candidate thread IDs", values: run.candidateThreadIds)
+                    diagnosticIDBlock(title: "Candidate message IDs", values: run.candidateMessageIds)
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Candidate IDs")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func diagnosticIDBlock(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(values.isEmpty ? "none" : values.joined(separator: "\n"))
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .lineLimit(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct SuggestionRow: View {
+    var suggestion: Suggestion
+    var isSelected: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(suggestion.type.tint.opacity(0.16))
+                Image(systemName: suggestion.type.systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(suggestion.type.tint)
+            }
+            .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(suggestion.type.displayName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(suggestion.state.displayName)
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(stateColor.opacity(0.12), in: Capsule())
+                        .foregroundStyle(stateColor)
+                        .lineLimit(1)
+                }
+
+                Text(suggestion.title)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 6) {
+                    Text(suggestion.evidence.threadTitle)
+                        .lineLimit(1)
+                    Text("-")
+                    Text(suggestion.evidence.sourceTimestamp.relativeLabel)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    ConfidenceDot(confidence: suggestion.confidence)
+                    Text(suggestion.confidenceLabel)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var rowBackground: Color {
+        isSelected ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor)
+    }
+
+    private var stateColor: Color {
+        switch suggestion.state {
+        case .new, .viewed:
+            return .accentColor
+        case .confirmed, .completed:
+            return .green
+        case .snoozed:
+            return .orange
+        case .failed, .needsPermission:
+            return .red
+        case .dismissed, .superseded:
+            return .secondary
+        }
+    }
+}
+
+struct SuggestionDetailView: View {
+    @ObservedObject var model: MinderViewModel
+    var suggestion: Suggestion?
+
+    var body: some View {
+        Group {
+            if let suggestion {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        detailHeader(suggestion)
+                        actionPanel(suggestion)
+                        evidencePanel(suggestion)
+                        metadataPanel(suggestion)
+                        actionButtons(suggestion)
+                    }
+                    .padding(18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(spacing: 10) {
+                    Spacer()
+                    Image(systemName: "sidebar.leading")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                    Text("Select a suggestion")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func detailHeader(_ suggestion: Suggestion) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                StatusPill(text: suggestion.type.displayName, systemImage: suggestion.type.systemImage, tint: suggestion.type.tint)
+                StatusPill(text: suggestion.state.displayName, systemImage: suggestion.state.systemImage, tint: suggestion.state.tint)
+                Spacer()
+            }
+
+            Text(suggestion.title)
+                .font(.title3.weight(.semibold))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Confidence")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(suggestion.confidence * 100))% - \(suggestion.confidenceLabel)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: suggestion.confidence)
+                    .tint(suggestion.confidence >= 0.85 ? .green : .accentColor)
+            }
+        }
+    }
+
+    private func actionPanel(_ suggestion: Suggestion) -> some View {
+        DetailPanel(title: "Suggested Action", systemImage: "checkmark.circle") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(suggestion.action.text)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let dueDate = suggestion.action.dueDate {
+                    Label(dueDate.detailLabel, systemImage: "calendar")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func evidencePanel(_ suggestion: Suggestion) -> some View {
+        DetailPanel(title: "Evidence", systemImage: "quote.bubble") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(suggestion.evidence.snippet)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Label(suggestion.evidence.sourceApp, systemImage: "bubble.left")
+                    Text("-")
+                    Text(suggestion.evidence.sourceTimestamp.detailLabel)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func metadataPanel(_ suggestion: Suggestion) -> some View {
+        DetailPanel(title: "Context", systemImage: "info.circle") {
+            VStack(spacing: 8) {
+                MetadataRow(title: "Thread", value: suggestion.evidence.threadTitle)
+                MetadataRow(title: "Source", value: suggestion.evidence.sourceApp)
+                MetadataRow(title: "Created", value: suggestion.createdAt.relativeLabel)
+                MetadataRow(title: "Updated", value: suggestion.updatedAt.relativeLabel)
+                if let snoozedUntil = suggestion.snoozedUntil {
+                    MetadataRow(title: "Snoozed Until", value: snoozedUntil.detailLabel)
+                }
+            }
+        }
+    }
+
+    private func actionButtons(_ suggestion: Suggestion) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if suggestion.state == .completed {
+                Label("Completed", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.green)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+            } else {
+                Button {
+                    model.complete(suggestion)
+                } label: {
+                    Label("Mark Completed", systemImage: "checkmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .controlSize(.large)
+        .padding(.top, 4)
+    }
+}
+
+private struct DetailPanel<Content: View>: View {
+    var title: String
+    var systemImage: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct MetadataRow: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+        }
+    }
+}
+
+private struct MetricPill: View {
+    var title: String
+    var value: String
+    var systemImage: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold).monospacedDigit())
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+    }
+}
+
+private struct StatusPill: View {
+    var text: String
+    var systemImage: String
+    var tint: Color = .accentColor
+
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct SourceHealthStrip: View {
+    var sources: [ConversationSource]
+    var messages: [Message]
+    var auditEvents: [AuditEvent]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if sources.isEmpty {
+                StatusPill(text: "No sources imported", systemImage: "tray", tint: .secondary)
+            } else {
+                ForEach(sources) { source in
+                    StatusPill(text: "\(source.name): \(source.health.displayName)", systemImage: source.kind.systemImage, tint: source.health.tint)
+                }
+            }
+
+            StatusPill(text: "\(messages.count) messages", systemImage: "text.bubble", tint: .secondary)
+
+            if let latest = auditEvents.first {
+                Text(latest.details)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+    }
+}
+
+private struct ConfidenceDot: View {
+    var confidence: Double
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 7, height: 7)
+            .accessibilityLabel("Confidence \(Int(confidence * 100)) percent")
+    }
+
+    private var color: Color {
+        if confidence >= 0.85 { return .green }
+        if confidence >= 0.60 { return .orange }
+        return .secondary
+    }
+}
+
+private extension SuggestionType {
+    var systemImage: String {
+        switch self {
+        case .staleReply:
+            return "timer"
+        case .unansweredQuestion:
+            return "questionmark.bubble"
+        case .deadline:
+            return "calendar.badge.clock"
+        case .calendarEvent:
+            return "calendar"
+        case .reminder:
+            return "checklist"
+        case .promisedTask:
+            return "hand.raised"
+        case .importantContext:
+            return "pin"
+        case .followUpNudge:
+            return "arrowshape.turn.up.right"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .deadline, .calendarEvent:
+            return LoopTheme.blue
+        case .unansweredQuestion, .staleReply:
+            return LoopTheme.orange
+        case .reminder, .promisedTask:
+            return LoopTheme.teal
+        case .importantContext:
+            return LoopTheme.purple
+        case .followUpNudge:
+            return LoopTheme.green
+        }
+    }
+}
+
+private extension ManualQueueItemKind {
+    var systemImage: String {
+        switch self {
+        case .todo:
+            return "checklist"
+        case .note:
+            return "note.text"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .todo:
+            return LoopTheme.green
+        case .note:
+            return LoopTheme.purple
+        }
+    }
+}
+
+private extension SuggestionState {
+    var systemImage: String {
+        switch self {
+        case .new:
+            return "sparkle"
+        case .viewed:
+            return "eye"
+        case .confirmed:
+            return "checkmark.seal"
+        case .dismissed:
+            return "xmark.circle"
+        case .snoozed:
+            return "clock"
+        case .completed:
+            return "checkmark.circle"
+        case .failed:
+            return "exclamationmark.triangle"
+        case .needsPermission:
+            return "lock.open"
+        case .superseded:
+            return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .new, .viewed:
+            return .accentColor
+        case .confirmed, .completed:
+            return .green
+        case .snoozed:
+            return .orange
+        case .dismissed, .superseded:
+            return .secondary
+        case .failed, .needsPermission:
+            return .red
+        }
+    }
+}
+
+private extension SourceKind {
+    var systemImage: String {
+        switch self {
+        case .sample:
+            return "shippingbox"
+        case .appleMessages:
+            return "message"
+        }
+    }
+}
+
+private extension HealthState {
+    var displayName: String {
+        switch self {
+        case .available:
+            return "Available"
+        case .missing:
+            return "Missing"
+        case .degraded:
+            return "Degraded"
+        case .revoked:
+            return "Revoked"
+        case .unsupported:
+            return "Unsupported"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .available:
+            return .green
+        case .missing, .degraded:
+            return .orange
+        case .revoked:
+            return .red
+        case .unsupported:
+            return .secondary
+        }
+    }
+}
+
+private extension GeminiDiagnosticOutcome {
+    var displayName: String {
+        switch self {
+        case .success:
+            return "Success"
+        case .failure:
+            return "Failure"
+        case .skipped:
+            return "Skipped"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .success:
+            return "checkmark.circle"
+        case .failure:
+            return "exclamationmark.triangle"
+        case .skipped:
+            return "minus.circle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .success:
+            return .green
+        case .failure:
+            return .red
+        case .skipped:
+            return .secondary
+        }
+    }
+}
+
+private extension GeminiDiagnosticErrorCategory {
+    var displayName: String {
+        switch self {
+        case .missingConfig:
+            return "Missing Config"
+        case .disabled:
+            return "Disabled"
+        case .noCandidates:
+            return "No Candidates"
+        case .network:
+            return "Network"
+        case .http:
+            return "HTTP"
+        case .missingOutput:
+            return "Missing Output"
+        case .invalidJSON:
+            return "Invalid JSON"
+        case .invalidEvidence:
+            return "Invalid Evidence"
+        case .success:
+            return "Success"
+        }
+    }
+}
+
+private extension Date {
+    var relativeLabel: String {
+        DateFormatters.relative.localizedString(for: self, relativeTo: Date())
+    }
+
+    var detailLabel: String {
+        DateFormatters.detail.string(from: self)
+    }
+}
+
+private enum DateFormatters {
+    static let relative: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
+    static let detail: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}

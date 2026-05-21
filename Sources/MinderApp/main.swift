@@ -1,0 +1,3 @@
+import AppKit
+
+MinderApplication.main()

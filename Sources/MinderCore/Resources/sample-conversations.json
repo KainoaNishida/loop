@@ -1,0 +1,72 @@
+{
+  "source": {
+    "id": "sample-messages",
+    "name": "Sample Messages",
+    "kind": "sample"
+  },
+  "threads": [
+    {
+      "id": "thread-maya-dinner",
+      "title": "Maya Chen",
+      "participants": ["You", "Maya"],
+      "messages": [
+        {
+          "id": "maya-001",
+          "sender": "Maya",
+          "sentAt": "2026-05-17T17:10:00Z",
+          "body": "Hey! Are we still on for dinner this Friday at 7?",
+          "isFromUser": false
+        },
+        {
+          "id": "maya-002",
+          "sender": "You",
+          "sentAt": "2026-05-17T17:42:00Z",
+          "body": "Yes, that still works. I'll book a table tomorrow.",
+          "isFromUser": true
+        },
+        {
+          "id": "maya-003",
+          "sender": "Maya",
+          "sentAt": "2026-05-18T09:12:00Z",
+          "body": "Perfect, can you send me the reservation once it is set?",
+          "isFromUser": false
+        }
+      ]
+    },
+    {
+      "id": "thread-noah-deadline",
+      "title": "Noah Patel",
+      "participants": ["You", "Noah"],
+      "messages": [
+        {
+          "id": "noah-001",
+          "sender": "Noah",
+          "sentAt": "2026-05-18T08:05:00Z",
+          "body": "Can you send the revised deck by Thursday at noon? We need it before the partner review.",
+          "isFromUser": false
+        },
+        {
+          "id": "noah-002",
+          "sender": "You",
+          "sentAt": "2026-05-18T08:07:00Z",
+          "body": "Yes, I can get it to you by then.",
+          "isFromUser": true
+        }
+      ]
+    },
+    {
+      "id": "thread-sam-followup",
+      "title": "Sam Rivera",
+      "participants": ["You", "Sam"],
+      "messages": [
+        {
+          "id": "sam-001",
+          "sender": "Sam",
+          "sentAt": "2026-05-15T18:30:00Z",
+          "body": "Could you remind me what time the lease walkthrough is next week?",
+          "isFromUser": false
+        }
+      ]
+    }
+  ]
+}

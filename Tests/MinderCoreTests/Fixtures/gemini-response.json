@@ -1,0 +1,15 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"suggestions\":[{\"type\":\"deadline\",\"title\":\"Send the revised deck by Thursday noon\",\"actionText\":\"Review the deck deadline and add a reminder for Thursday at noon.\",\"confidence\":0.91,\"threadId\":\"thread-sample-messages-thread-noah-deadline\",\"evidenceMessageId\":\"message-sample-messages-thread-noah-deadline-noah-001\",\"evidenceSnippet\":\"Can you send the revised deck by Thursday at noon?\",\"dueDate\":null}]}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ]
+}
