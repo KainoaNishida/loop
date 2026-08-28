@@ -84,7 +84,13 @@ final class ImporterStoreTests: XCTestCase {
         let store = try makeStore()
         _ = try ConversationImporter().importSampleConversations(into: store)
 
-        let engine = SuggestionEngine(store: store, rankingService: LocalConversationRankingService())
+        let now = ISO8601DateFormatter().date(from: "2026-05-19T12:00:00Z")!
+        let policy = ConversationRecommendationPolicy(now: now)
+        let engine = SuggestionEngine(
+            store: store,
+            rankingService: LocalConversationRankingService(policy: policy),
+            recommendationPolicy: policy
+        )
         let generated = try await engine.generateFromStoredMessages()
         XCTAssertFalse(generated.isEmpty)
 
@@ -297,6 +303,7 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertTrue(valid.isValid)
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     func testGeminiDiagnosticRunSaveFetchAndClearKeepsOtherData() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -388,6 +395,7 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertFalse(diagnosticText.contains(privateBody))
         XCTAssertFalse(diagnosticText.contains("Private body"))
     }
+#endif
 
     func testGeminiHTTPFailureExposesStatusCode() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -1463,6 +1471,58 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(messages.last?.isFromUser, true)
     }
 
+    func testAppleMessagesImporterDecodesLegacyTypedStreamAttributedBodyWhenTextIsMissing() async throws {
+        let store = try makeStore()
+        let databaseURL = try makeMessagesDatabaseWithLegacyTypedStreamOutgoingAttributedBody()
+        let importer = AppleMessagesConversationImporter(databaseURL: databaseURL)
+
+        let result = try await importer.importRecent(into: store, since: Date(timeIntervalSinceNow: -30 * 86_400))
+        let messages = try store.fetchMessages()
+
+        XCTAssertEqual(result.insertedMessages, 2)
+        XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "Typed stream reply text."])
+        XCTAssertEqual(messages.last?.isFromUser, true)
+    }
+
+    func testAppleMessagesImporterExtractsEmbeddedAttributedBodyStringWhenArchivesCannotDecode() async throws {
+        let store = try makeStore()
+        let databaseURL = try makeMessagesDatabaseWithEmbeddedTextOutgoingAttributedBody()
+        let importer = AppleMessagesConversationImporter(databaseURL: databaseURL)
+
+        let result = try await importer.importRecent(into: store, since: Date(timeIntervalSinceNow: -30 * 86_400))
+        let messages = try store.fetchMessages()
+
+        XCTAssertEqual(result.insertedMessages, 2)
+        XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "Embedded reply text should be readable."])
+        XCTAssertEqual(messages.last?.isFromUser, true)
+    }
+
+    func testAppleMessagesImporterFallsBackToPayloadDataWhenAttributedBodyCannotDecode() async throws {
+        let store = try makeStore()
+        let databaseURL = try makeMessagesDatabaseWithPayloadDataOutgoingBody()
+        let importer = AppleMessagesConversationImporter(databaseURL: databaseURL)
+
+        let result = try await importer.importRecent(into: store, since: Date(timeIntervalSinceNow: -30 * 86_400))
+        let messages = try store.fetchMessages()
+
+        XCTAssertEqual(result.insertedMessages, 2)
+        XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "Payload reply text should be readable."])
+        XCTAssertEqual(messages.last?.isFromUser, true)
+    }
+
+    func testAppleMessagesImporterFallsBackToMessageSummaryInfoWhenAttributedBodyCannotDecode() async throws {
+        let store = try makeStore()
+        let databaseURL = try makeMessagesDatabaseWithMessageSummaryInfoOutgoingBody()
+        let importer = AppleMessagesConversationImporter(databaseURL: databaseURL)
+
+        let result = try await importer.importRecent(into: store, since: Date(timeIntervalSinceNow: -30 * 86_400))
+        let messages = try store.fetchMessages()
+
+        XCTAssertEqual(result.insertedMessages, 2)
+        XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "Summary reply text should be readable."])
+        XCTAssertEqual(messages.last?.isFromUser, true)
+    }
+
     func testAppleMessagesImporterFallsBackWhenOutgoingAttributedBodyCannotDecode() async throws {
         let store = try makeStore()
         let databaseURL = try makeMessagesDatabaseWithUndecodableOutgoingAttributedBody()
@@ -1475,6 +1535,7 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "[Sent reply without plain text]"])
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     func testAppleMessagesTextDiagnosticsCountsAttributedBodiesAndNonTextRows() throws {
         let cutoff = Date(timeIntervalSinceNow: -30 * 86_400)
         let databaseURL = try makeMessagesDatabaseForTextDiagnostics()
@@ -1484,6 +1545,11 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(diagnostics.outgoingWithoutPlainText, 2)
         XCTAssertEqual(diagnostics.outgoingWithAttributedBody, 1)
         XCTAssertEqual(diagnostics.outgoingWithoutPlainTextWithAttributedBody, 1)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromAttributedBody, 1)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromPayloadData, 0)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromMessageSummaryInfo, 0)
+        XCTAssertEqual(diagnostics.outgoingUnresolvedAfterDecode, 1)
+        XCTAssertEqual(diagnostics.recoveredOutgoingWithoutPlainTextCount, 1)
         XCTAssertEqual(diagnostics.attachmentRows, 1)
         XCTAssertEqual(diagnostics.visibleNonTextRows, 1)
     }
@@ -1496,7 +1562,120 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(diagnostics.outgoingWithoutPlainText, 1)
         XCTAssertEqual(diagnostics.outgoingWithAttributedBody, 0)
         XCTAssertEqual(diagnostics.outgoingWithoutPlainTextWithAttributedBody, 0)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromAttributedBody, 0)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromPayloadData, 0)
+        XCTAssertEqual(diagnostics.outgoingDecodedFromMessageSummaryInfo, 0)
+        XCTAssertEqual(diagnostics.outgoingUnresolvedAfterDecode, 1)
     }
+
+    func testAppleMessagesDecodeTraceReportsMomHunterAndKsmOutgoingRows() throws {
+        let store = try makeStore()
+        let databaseURL = try makeMessagesDatabaseForDecodeTrace()
+        let cutoff = Date(timeIntervalSinceNow: -30 * 86_400)
+        let report = try AppleMessagesConversationImporter(databaseURL: databaseURL).decodeTrace(
+            threadTitleMatches: ["Mom", "Hunter", "ksm"],
+            since: cutoff,
+            limitPerThread: 12
+        )
+
+        XCTAssertEqual(report.unmatchedTitles, [])
+        XCTAssertEqual(report.threadMatches.count, 3)
+        XCTAssertEqual(report.outgoingRowCount, 6)
+        XCTAssertEqual(report.placeholderRowCount, 1)
+        XCTAssertTrue(try store.fetchMessages().isEmpty)
+
+        let mom = try XCTUnwrap(report.threadMatches.first { $0.chatTitle == "Mom" })
+        XCTAssertEqual(mom.chatKind, .direct)
+        XCTAssertEqual(mom.chatGUID, "iMessage;-;+15555550100")
+        XCTAssertEqual(mom.outgoingRows.count, 3)
+
+        let momPlain = try XCTUnwrap(mom.outgoingRows.first { $0.messageGUID == "message-mom-plain" })
+        XCTAssertTrue(momPlain.messageTextExists)
+        XCTAssertEqual(momPlain.messageTextSnippet, "Oh no I do need to pay that, doing it rn")
+        XCTAssertEqual(momPlain.finalBody, "Oh no I do need to pay that, doing it rn")
+        XCTAssertNil(momPlain.failureReason)
+
+        let momAttributed = try XCTUnwrap(mom.outgoingRows.first { $0.messageGUID == "message-mom-attributed" })
+        XCTAssertFalse(momAttributed.messageTextExists)
+        XCTAssertTrue(momAttributed.attributedBody.isPresent)
+        XCTAssertGreaterThan(momAttributed.attributedBody.byteLength, 0)
+        XCTAssertNotNil(momAttributed.attributedBody.hexPrefix)
+        XCTAssertEqual(momAttributed.attributedBody.decodedSnippet, "Direct attributed reply text.")
+        XCTAssertEqual(momAttributed.finalBody, "Direct attributed reply text.")
+        XCTAssertNil(momAttributed.failureReason)
+
+        let momUnresolved = try XCTUnwrap(mom.outgoingRows.first { $0.messageGUID == "message-mom-unresolved" })
+        XCTAssertFalse(momUnresolved.messageTextExists)
+        XCTAssertFalse(momUnresolved.attributedBody.isPresent)
+        XCTAssertEqual(momUnresolved.finalBody, "[Sent reply without plain text]")
+        XCTAssertEqual(momUnresolved.failureReason, "No message.text or supported blob columns had data.")
+
+        let hunter = try XCTUnwrap(report.threadMatches.first { $0.chatTitle == "Hunter Matsukubo" })
+        XCTAssertEqual(hunter.chatKind, .direct)
+        XCTAssertEqual(hunter.outgoingRows.count, 2)
+
+        let hunterPayload = try XCTUnwrap(hunter.outgoingRows.first { $0.messageGUID == "message-hunter-payload" })
+        XCTAssertTrue(hunterPayload.payloadData.isPresent)
+        XCTAssertEqual(hunterPayload.payloadData.decodedSnippet, "Direct payload reply text.")
+        XCTAssertEqual(hunterPayload.finalBody, "Direct payload reply text.")
+
+        let hunterSummary = try XCTUnwrap(hunter.outgoingRows.first { $0.messageGUID == "message-hunter-summary" })
+        XCTAssertTrue(hunterSummary.messageSummaryInfo.isPresent)
+        XCTAssertEqual(hunterSummary.messageSummaryInfo.decodedSnippet, "Direct summary reply text.")
+        XCTAssertEqual(hunterSummary.finalBody, "Direct summary reply text.")
+
+        let ksm = try XCTUnwrap(report.threadMatches.first { $0.chatTitle == "ksm" })
+        XCTAssertEqual(ksm.chatKind, .group)
+        XCTAssertEqual(ksm.chatGUID, "iMessage;+;chat-ksm")
+        XCTAssertEqual(ksm.outgoingRows.first?.messageTextSnippet, "Group reply works.")
+        XCTAssertEqual(ksm.outgoingRows.first?.finalBody, "Group reply works.")
+    }
+
+    func testAppleMessagesDecodeTraceMatchesDirectChatsByResolvedContactName() throws {
+        let databaseURL = try makeMessagesDatabaseForDecodeTrace(
+            includeDirectDisplayNames: false,
+            includeMessageHandles: false,
+            includeChatHandleJoin: false
+        )
+        let report = try AppleMessagesConversationImporter(
+            databaseURL: databaseURL,
+            contactResolver: FakeContactResolver(names: [
+                "phone:5555550100": "Mom",
+                "phone:5555550101": "Hunter Matsukubo"
+            ])
+        ).decodeTrace(
+            threadTitleMatches: ["Mom", "Hunter", "ksm"],
+            since: Date(timeIntervalSinceNow: -30 * 86_400),
+            limitPerThread: 12
+        )
+
+        XCTAssertEqual(report.unmatchedTitles, [])
+        XCTAssertEqual(report.threadMatches.count, 3)
+        XCTAssertEqual(report.threadMatches.first { $0.requestedTitle == "Mom" }?.chatTitle, "Mom")
+        XCTAssertEqual(report.threadMatches.first { $0.requestedTitle == "Hunter" }?.chatTitle, "Hunter Matsukubo")
+        XCTAssertEqual(report.threadMatches.first { $0.requestedTitle == "ksm" }?.chatKind, .group)
+    }
+
+    func testAppleMessagesDecodeTraceMatchesStoredThreadAliases() throws {
+        let databaseURL = try makeMessagesDatabaseForDecodeTrace(
+            includeDirectDisplayNames: false,
+            includeMessageHandles: false,
+            includeChatHandleJoin: false
+        )
+        let report = try AppleMessagesConversationImporter(databaseURL: databaseURL).decodeTrace(
+            threadTitleMatches: ["Mom"],
+            aliasesByTitle: ["Mom": ["iMessage;-;+15555550100"]],
+            since: Date(timeIntervalSinceNow: -30 * 86_400),
+            limitPerThread: 12
+        )
+
+        XCTAssertEqual(report.unmatchedTitles, [])
+        XCTAssertEqual(report.threadMatches.count, 1)
+        XCTAssertEqual(report.threadMatches.first?.requestedTitle, "Mom")
+        XCTAssertEqual(report.threadMatches.first?.chatGUID, "iMessage;-;+15555550100")
+        XCTAssertEqual(report.threadMatches.first?.outgoingRows.count, 3)
+    }
+#endif
 
     func testAppleMessagesImporterKeepsInboundAttachmentWithoutText() async throws {
         let store = try makeStore()
@@ -1983,6 +2162,28 @@ private func makeMessagesDatabaseWithOutgoingAttributedBody() throws -> URL {
     try makeMessagesDatabaseWithAttributedOutgoingBody(.blob(try archivedAttributedBody("I brought bagels this time.")))
 }
 
+private func makeMessagesDatabaseWithLegacyTypedStreamOutgoingAttributedBody() throws -> URL {
+    try makeMessagesDatabaseWithAttributedOutgoingBody(.blob(legacyArchivedAttributedBody("Typed stream reply text.")))
+}
+
+private func makeMessagesDatabaseWithEmbeddedTextOutgoingAttributedBody() throws -> URL {
+    try makeMessagesDatabaseWithAttributedOutgoingBody(.blob(embeddedPlainTextAttributedBody("Embedded reply text should be readable.")))
+}
+
+private func makeMessagesDatabaseWithPayloadDataOutgoingBody() throws -> URL {
+    try makeMessagesDatabaseWithSupplementalOutgoingBody(
+        payloadData: embeddedPlainTextAttributedBody("Payload reply text should be readable."),
+        messageSummaryInfo: nil
+    )
+}
+
+private func makeMessagesDatabaseWithMessageSummaryInfoOutgoingBody() throws -> URL {
+    try makeMessagesDatabaseWithSupplementalOutgoingBody(
+        payloadData: nil,
+        messageSummaryInfo: embeddedPlainTextAttributedBody("Summary reply text should be readable.")
+    )
+}
+
 private func makeMessagesDatabaseWithUndecodableOutgoingAttributedBody() throws -> URL {
     try makeMessagesDatabaseWithAttributedOutgoingBody(.blob(Data([0x00, 0x01, 0x02, 0x03])))
 }
@@ -2061,11 +2262,134 @@ private func makeMessagesDatabaseForTextDiagnostics() throws -> URL {
     return url
 }
 
+private func makeMessagesDatabaseForDecodeTrace(
+    includeDirectDisplayNames: Bool = true,
+    includeMessageHandles: Bool = true,
+    includeChatHandleJoin: Bool = true
+) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MinderCoreTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("chat.db")
+    let database = try SQLiteDatabase(url: url)
+
+    try database.execute("CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL, display_name TEXT)")
+    try database.execute("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL)")
+    try database.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL, text TEXT, attributedBody BLOB, payload_data BLOB, message_summary_info BLOB, date INTEGER NOT NULL, is_from_me INTEGER NOT NULL, handle_id INTEGER)")
+    try database.execute("CREATE TABLE chat_message_join (chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL)")
+    if includeChatHandleJoin {
+        try database.execute("CREATE TABLE chat_handle_join (chat_id INTEGER NOT NULL, handle_id INTEGER NOT NULL)")
+    }
+
+    try database.execute(
+        "INSERT INTO chat (guid, display_name) VALUES (?, ?)",
+        [.text("iMessage;-;+15555550100"), includeDirectDisplayNames ? .text("Mom") : .null]
+    )
+    try database.execute(
+        "INSERT INTO chat (guid, display_name) VALUES (?, ?)",
+        [.text("iMessage;-;+15555550101"), includeDirectDisplayNames ? .text("Hunter Matsukubo") : .null]
+    )
+    try database.execute("INSERT INTO chat (guid, display_name) VALUES (?, ?)", [.text("iMessage;+;chat-ksm"), .text("ksm")])
+    try database.execute("INSERT INTO handle (id) VALUES (?)", [.text("+15555550100")])
+    try database.execute("INSERT INTO handle (id) VALUES (?)", [.text("+15555550101")])
+    try database.execute("INSERT INTO handle (id) VALUES (?)", [.text("ksm@example.com")])
+    if includeChatHandleJoin {
+        try database.execute("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)", [.int(1), .int(1)])
+        try database.execute("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)", [.int(2), .int(2)])
+        try database.execute("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)", [.int(3), .int(3)])
+    }
+
+    let base = Date(timeIntervalSinceNow: -60 * 60)
+    let rows: [(chatID: Int, guid: String, text: SQLiteValue, attributedBody: SQLiteValue, payloadData: SQLiteValue, messageSummaryInfo: SQLiteValue, handleID: Int)] = [
+        (1, "message-mom-plain", .text("Oh no I do need to pay that, doing it rn"), .null, .null, .null, 1),
+        (1, "message-mom-attributed", .null, .blob(try archivedAttributedBody("Direct attributed reply text.")), .null, .null, 1),
+        (1, "message-mom-unresolved", .null, .null, .null, .null, 1),
+        (2, "message-hunter-payload", .null, .blob(Data([0x00, 0x01, 0x02, 0x03])), .blob(embeddedPlainTextAttributedBody("Direct payload reply text.")), .null, 2),
+        (2, "message-hunter-summary", .null, .blob(Data([0x00, 0x01, 0x02, 0x03])), .null, .blob(embeddedPlainTextAttributedBody("Direct summary reply text.")), 2),
+        (3, "message-ksm-plain", .text("Group reply works."), .null, .null, .null, 3)
+    ]
+
+    for (index, row) in rows.enumerated() {
+        let sentAt = AppleMessagesDateCodec.messageDateValue(from: base.addingTimeInterval(Double(index * 60)))
+        try database.execute(
+            "INSERT INTO message (guid, text, attributedBody, payload_data, message_summary_info, date, is_from_me, handle_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                .text(row.guid),
+                row.text,
+                row.attributedBody,
+                row.payloadData,
+                row.messageSummaryInfo,
+                .int(Int(sentAt)),
+                .int(1),
+                includeMessageHandles ? .int(row.handleID) : .null
+            ]
+        )
+        try database.execute("INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)", [.int(row.chatID), .int(index + 1)])
+    }
+
+    return url
+}
+
+private func makeMessagesDatabaseWithSupplementalOutgoingBody(payloadData: Data?, messageSummaryInfo: Data?) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MinderCoreTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("chat.db")
+    let database = try SQLiteDatabase(url: url)
+
+    try database.execute("CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL, display_name TEXT)")
+    try database.execute("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL)")
+    try database.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL, text TEXT, attributedBody BLOB, payload_data BLOB, message_summary_info BLOB, date INTEGER NOT NULL, is_from_me INTEGER NOT NULL, handle_id INTEGER)")
+    try database.execute("CREATE TABLE chat_message_join (chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL)")
+
+    try database.execute("INSERT INTO chat (guid, display_name) VALUES (?, ?)", [.text("iMessage;-;bagels-chat"), .text("jessie")])
+    try database.execute("INSERT INTO handle (id) VALUES (?)", [.text("+15555550101")])
+
+    let inbound = AppleMessagesDateCodec.messageDateValue(from: Date(timeIntervalSinceNow: -2 * 86_400))
+    let outbound = AppleMessagesDateCodec.messageDateValue(from: Date(timeIntervalSinceNow: -2 * 86_400 + 300))
+
+    try database.execute(
+        "INSERT INTO message (guid, text, attributedBody, payload_data, message_summary_info, date, is_from_me, handle_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [.text("message-bagels-in"), .text("You didn't get me bagels..."), .null, .null, .null, .int(Int(inbound)), .int(0), .int(1)]
+    )
+    try database.execute("INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)", [.int(1), .int(1)])
+
+    try database.execute(
+        "INSERT INTO message (guid, text, attributedBody, payload_data, message_summary_info, date, is_from_me, handle_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            .text("message-bagels-reply"),
+            .null,
+            .blob(Data([0x00, 0x01, 0x02, 0x03])),
+            payloadData.map(SQLiteValue.blob) ?? .null,
+            messageSummaryInfo.map(SQLiteValue.blob) ?? .null,
+            .int(Int(outbound)),
+            .int(1),
+            .int(1)
+        ]
+    )
+    try database.execute("INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)", [.int(1), .int(2)])
+
+    return url
+}
+
 private func archivedAttributedBody(_ text: String) throws -> Data {
     try NSKeyedArchiver.archivedData(
         withRootObject: NSAttributedString(string: text),
         requiringSecureCoding: false
     )
+}
+
+private func legacyArchivedAttributedBody(_ text: String) -> Data {
+    NSArchiver.archivedData(withRootObject: NSAttributedString(string: text))
+}
+
+private func embeddedPlainTextAttributedBody(_ text: String) -> Data {
+    var data = Data([0x00, 0x11, 0x03])
+    for chunk in ["NSAttributedString", "NSString", text, "NSFont"] {
+        data.append(contentsOf: chunk.utf8)
+        data.append(0x00)
+    }
+    return data
 }
 
 private func makeMessagesDatabaseWithInboundAttachment() throws -> URL {

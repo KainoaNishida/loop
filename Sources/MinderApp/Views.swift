@@ -3,6 +3,14 @@ import MinderCore
 
 private enum LoopTheme {
     static let pageFill = Color(nsColor: .windowBackgroundColor)
+    static let headerFill = dynamicColor(
+        light: NSColor(calibratedWhite: 0.98, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.12, alpha: 1)
+    )
+    static let cardFill = dynamicColor(
+        light: NSColor(calibratedWhite: 1.0, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.15, alpha: 1)
+    )
     static let elevatedFill = Color(nsColor: .controlBackgroundColor)
     static let controlFill = Color(nsColor: .textBackgroundColor)
     static let secondaryFill = Color(nsColor: .textBackgroundColor)
@@ -50,77 +58,69 @@ struct InboxView: View {
         }
         .frame(minWidth: 720, idealWidth: 760, minHeight: 720, idealHeight: 820)
         .background(LoopTheme.pageFill)
-        .sheet(isPresented: $model.isShowingGeminiDiagnostics) {
-            GeminiDiagnosticsView(model: model)
-        }
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "checklist.checked")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(LoopTheme.blue, in: RoundedRectangle(cornerRadius: 8))
-                Text("Loop")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(LoopTheme.text)
-                Text("\(model.activeQueueCount)")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(LoopTheme.blue)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(LoopTheme.blue.opacity(0.12), in: Capsule())
-            }
+        HStack(alignment: .center, spacing: 14) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(LoopTheme.blue)
+                    Image(systemName: "checklist.checked")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 34, height: 34)
 
-            Picker("View", selection: $model.selectedTab) {
-                ForEach(LoopMainTab.allCases) { tab in
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .tag(tab)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Loop")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(LoopTheme.text)
+                    Text(headerSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(LoopTheme.secondaryText)
+                        .lineLimit(1)
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 220)
+
+            if model.selectedTab == .queue {
+                QueueCountBadge(count: model.activeQueueCount)
+            }
 
             Spacer()
 
             HStack(spacing: 8) {
-                if model.isShowingProgress {
-                    ProgressView()
-                        .controlSize(.small)
+                if model.selectedTab == .queue {
+                    if model.isShowingProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Button {
+                        model.beginManualItem()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .help("Add note or to-do")
+
+                    Button {
+                        model.generateSuggestions()
+                    } label: {
+                        Label("Generate", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(LoopTheme.blue)
+                    .disabled(!model.canGenerateSuggestions)
+                    .help("Generate suggestions")
                 }
-                Button {
-                    model.beginManualItem()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("Add note or to-do")
 
                 Button {
-                    model.generateSuggestions()
-                } label: {
-                    Label("Generate", systemImage: "wand.and.stars")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(LoopTheme.blue)
-                .disabled(!model.canGenerateSuggestions)
-                .help("Generate suggestions")
-
-                Button {
-                    model.openSettings()
+                    model.toggleSettings()
                 } label: {
                     Image(systemName: "gearshape")
+                        .foregroundStyle(model.selectedTab == .settings ? LoopTheme.blue : LoopTheme.secondaryText)
                 }
-                .help("Settings")
-
-                Button {
-                    model.openQueueWindow()
-                } label: {
-                    Image(systemName: "macwindow")
-                }
-                .help("Open queue window")
+                .help(model.selectedTab == .settings ? "Close settings" : "Settings")
 
                 Button {
                     model.quitLoop()
@@ -131,8 +131,19 @@ struct InboxView: View {
             }
             .controlSize(.small)
         }
-        .padding(16)
-        .background(LoopTheme.elevatedFill)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(LoopTheme.headerFill)
+    }
+
+    private var headerSubtitle: String {
+        switch model.selectedTab {
+        case .queue:
+            guard model.activeQueueCount > 0 else { return "All caught up" }
+            return "Personal queue"
+        case .settings:
+            return "Settings"
+        }
     }
 
     @ViewBuilder
@@ -146,39 +157,59 @@ struct InboxView: View {
     }
 
     private var queue: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                if model.isComposingManualItem {
-                    ManualQueueComposerView(model: model)
-                }
+        VStack(spacing: 0) {
+            QueuePagerBar(
+                pageNumber: model.queuePageNumber,
+                pageCount: model.queuePageCount
+            )
 
-                if model.queueItems.isEmpty && !model.isComposingManualItem {
-                    EmptyStateView(model: model)
-                } else {
-                    ForEach(model.queueItems) { item in
-                        switch item {
-                        case .suggestion(let card):
-                            LoopSuggestionCardView(
-                                card: card,
-                                toggleExpanded: { model.toggleExpanded(item) },
-                                complete: { model.complete(card.suggestion) }
-                            )
-                        case .manual(let manualItem):
-                            ManualQueueItemCardView(item: manualItem) {
-                                model.complete(manualItem)
+            Divider()
+
+            HStack(alignment: .center, spacing: 10) {
+                QueueArrowButton(
+                    systemImage: "chevron.left",
+                    help: "Previous queue item",
+                    isEnabled: model.canGoToPreviousQueuePage,
+                    action: { model.goToPreviousQueuePage() }
+                )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    if model.isComposingManualItem {
+                        ManualQueueComposerView(model: model)
+                    }
+
+                    if model.queueItems.isEmpty && !model.isComposingManualItem {
+                        EmptyStateView(model: model)
+                    } else {
+                        ForEach(model.queueItems) { item in
+                            switch item {
+                            case .suggestion(let card):
+                                LoopSuggestionCardView(
+                                    card: card,
+                                    toggleExpanded: { model.toggleExpanded(item) },
+                                    complete: { model.complete(card.suggestion) }
+                                )
+                            case .manual(let manualItem):
+                                ManualQueueItemCardView(item: manualItem) {
+                                    model.complete(manualItem)
+                                }
                             }
                         }
                     }
-                }
 
-                if !model.recentCompletedQueueItems.isEmpty {
-                    RecentlyCompletedSection(
-                        items: model.recentCompletedQueueItems,
-                        undo: { model.undoCompleted($0) }
-                    )
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                QueueArrowButton(
+                    systemImage: "chevron.right",
+                    help: "Next queue item",
+                    isEnabled: model.canGoToNextQueuePage,
+                    action: { model.goToNextQueuePage() }
+                )
             }
-            .padding(12)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .background(LoopTheme.pageFill)
     }
@@ -188,7 +219,7 @@ struct InboxView: View {
             Label(messagesFooterText, systemImage: "message")
                 .font(.caption)
                 .foregroundStyle(LoopTheme.secondaryText)
-                .lineLimit(2)
+                .lineLimit(1)
 
             Spacer()
 
@@ -198,7 +229,8 @@ struct InboxView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(LoopTheme.elevatedFill)
     }
 
@@ -207,6 +239,85 @@ struct InboxView: View {
             return "\(model.appleMessagesCount) messages · \(sync.relativeLabel)"
         }
         return "\(model.appleMessagesCount) messages"
+    }
+}
+
+private struct QueuePagerBar: View {
+    var pageNumber: Int
+    var pageCount: Int
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Active Queue", systemImage: "tray.full")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(LoopTheme.text)
+                Text(queueStatusText)
+                    .font(.caption)
+                    .foregroundStyle(LoopTheme.secondaryText)
+            }
+
+            Spacer()
+
+            StatusPill(text: pageText, systemImage: pageCount == 0 ? "checkmark.circle" : "rectangle.stack", tint: pageCount == 0 ? LoopTheme.green : LoopTheme.blue)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(LoopTheme.elevatedFill)
+    }
+
+    private var pageText: String {
+        pageCount == 0 ? "Clear" : "\(pageNumber) of \(pageCount)"
+    }
+
+    private var queueStatusText: String {
+        pageCount == 0 ? "Nothing needs attention right now." : "Focused review"
+    }
+}
+
+private struct QueueCountBadge: View {
+    var count: Int
+
+    var body: some View {
+        Label(countText, systemImage: count == 0 ? "checkmark.circle.fill" : "circle.fill")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(count == 0 ? LoopTheme.green : LoopTheme.blue)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background((count == 0 ? LoopTheme.green : LoopTheme.blue).opacity(0.12), in: Capsule())
+    }
+
+    private var countText: String {
+        count == 1 ? "1 active" : "\(count) active"
+    }
+}
+
+private struct QueueArrowButton: View {
+    var systemImage: String
+    var help: String
+    var isEnabled: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(isEnabled ? LoopTheme.blue : LoopTheme.tertiaryText)
+                .frame(width: 42, height: 88)
+                .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(LoopTheme.separator.opacity(isEnabled ? 0.9 : 0.45), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
+        .shadow(color: .black.opacity(isEnabled ? 0.06 : 0), radius: 8, y: 3)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -252,6 +363,7 @@ private struct LoopSuggestionCardView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(card.suggestion.type.tint)
                     .controlSize(.small)
+                    .fixedSize(horizontal: true, vertical: false)
                     .disabled(card.suggestion.state == .completed)
                 }
             }
@@ -268,28 +380,29 @@ private struct LoopSuggestionCardView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 6) {
-                Image(systemName: card.isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.semibold))
-                Text(card.isExpanded ? "Hide conversation" : "Show conversation")
-                    .font(.caption.weight(.medium))
-            }
-            .foregroundStyle(LoopTheme.blue)
+            ConversationPreview(messages: card.recentMessages)
+                .transition(.opacity.combined(with: .move(edge: .top)))
 
-            if card.isExpanded {
-                ConversationPreview(messages: card.recentMessages)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            Button(action: toggleExpanded) {
+                HStack(spacing: 6) {
+                    Image(systemName: card.isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                    Text(card.isExpanded ? "Show less" : "Show more")
+                        .font(.caption.weight(.medium))
+                }
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(LoopTheme.blue)
+            .help(card.isExpanded ? "Show fewer messages" : "Show more messages")
         }
-        .padding(12)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(card.suggestion.type.tint.opacity(0.22), lineWidth: 1)
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: toggleExpanded)
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
     }
 }
 
@@ -334,6 +447,7 @@ private struct ManualQueueItemCardView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(item.kind.tint)
                     .controlSize(.small)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
 
@@ -345,13 +459,14 @@ private struct ManualQueueItemCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(item.kind.tint.opacity(0.20), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
     }
 }
 
@@ -537,7 +652,7 @@ struct EmptyStateView: View {
             Button {
                 model.generateSuggestions()
             } label: {
-                Label("Generate", systemImage: "wand.and.stars")
+                Text("Generate")
             }
             .buttonStyle(.borderedProminent)
             .tint(LoopTheme.blue)
@@ -555,6 +670,7 @@ struct EmptyStateView: View {
     }
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
 private struct GeminiDiagnosticsView: View {
     @ObservedObject var model: MinderViewModel
 
@@ -562,7 +678,7 @@ private struct GeminiDiagnosticsView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if model.geminiDiagnostics.isEmpty && model.appleMessagesTextDiagnostics == nil {
+            if model.geminiDiagnostics.isEmpty && model.appleMessagesTextDiagnostics == nil && model.appleMessagesDecodeTraceReport == nil {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "stethoscope")
@@ -570,7 +686,7 @@ private struct GeminiDiagnosticsView: View {
                         .foregroundStyle(.secondary)
                     Text("No diagnostics recorded")
                         .font(.headline)
-                    Text("Run a Messages text check or Generate with Gemini enabled to record redacted status and counts.")
+                    Text("Run a Messages trace, run a Messages text check, or Generate with Gemini enabled to record diagnostics.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -582,6 +698,9 @@ private struct GeminiDiagnosticsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
+                        if let report = model.appleMessagesDecodeTraceReport {
+                            AppleMessagesDecodeTraceReportView(report: report)
+                        }
                         if let diagnostics = model.appleMessagesTextDiagnostics {
                             AppleMessagesTextDiagnosticRow(diagnostics: diagnostics)
                         }
@@ -605,12 +724,19 @@ private struct GeminiDiagnosticsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Label("Diagnostics", systemImage: "stethoscope")
                     .font(.headline)
-                Text("Redacted metadata only. No message bodies or raw Gemini payloads are stored.")
+                Text("Gemini payloads stay redacted. The temporary Messages trace shows local snippets in memory only.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
+
+            Button {
+                model.runAppleMessagesDecodeTrace()
+            } label: {
+                Label("Run Mom/Hunter Trace", systemImage: "text.magnifyingglass")
+            }
+            .disabled(model.isWorking)
 
             Button {
                 model.runAppleMessagesTextDiagnostic()
@@ -638,7 +764,7 @@ private struct GeminiDiagnosticsView: View {
             } label: {
                 Label("Clear Diagnostics", systemImage: "trash")
             }
-            .disabled(model.geminiDiagnostics.isEmpty || model.isWorking)
+            .disabled(!hasAnyDiagnostics || model.isWorking)
 
             Button("Done") {
                 model.isShowingGeminiDiagnostics = false
@@ -647,6 +773,231 @@ private struct GeminiDiagnosticsView: View {
         }
         .controlSize(.small)
         .padding(14)
+    }
+
+    private var hasAnyDiagnostics: Bool {
+        !model.geminiDiagnostics.isEmpty
+            || model.appleMessagesTextDiagnostics != nil
+            || model.appleMessagesDecodeTraceReport != nil
+    }
+}
+
+private struct AppleMessagesDecodeTraceReportView: View {
+    var report: AppleMessagesDecodeTraceReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                StatusPill(text: "Messages Decode Trace", systemImage: "text.magnifyingglass", tint: .orange)
+                Spacer()
+                Text(report.checkedAt.detailLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], alignment: .leading, spacing: 8) {
+                MetricPill(title: "chat matches", value: "\(report.threadMatches.count)", systemImage: "bubble.left.and.bubble.right")
+                MetricPill(title: "sent rows", value: "\(report.outgoingRowCount)", systemImage: "arrowshape.turn.up.left")
+                MetricPill(title: "placeholders", value: "\(report.placeholderRowCount)", systemImage: "exclamationmark.bubble")
+                MetricPill(title: "unmatched targets", value: "\(report.unmatchedTitles.count)", systemImage: "questionmark.circle")
+            }
+
+            if !report.unmatchedTitles.isEmpty {
+                Text("No matching chat title or contact-resolved participant found for \(report.unmatchedTitles.joined(separator: ", ")).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if report.threadMatches.isEmpty {
+                Text("No matching Mom, Hunter, or ksm chats were found.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(report.threadMatches) { thread in
+                        AppleMessagesDecodeTraceThreadView(thread: thread, checkedSince: report.checkedSince)
+                        if thread.id != report.threadMatches.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+
+            Text("Temporary local trace only. Snippets are not written to Loop storage or files.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct AppleMessagesDecodeTraceThreadView: View {
+    var thread: AppleMessagesDecodeTraceThread
+    var checkedSince: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(thread.chatTitle)
+                        .font(.subheadline.weight(.semibold))
+                    Text("Matched \(thread.requestedTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusPill(text: thread.chatKind.displayName, systemImage: thread.chatKind.systemImage, tint: thread.chatKind.tint)
+                MetricPill(title: "sent rows", value: "\(thread.outgoingRows.count)", systemImage: "arrowshape.turn.up.left")
+            }
+
+            Text(thread.chatGUID)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+
+            if thread.outgoingRows.isEmpty {
+                Text("No outgoing rows found since \(checkedSince.detailLabel).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(thread.outgoingRows) { row in
+                        AppleMessagesDecodeTraceRowView(row: row)
+                        if row.id != thread.outgoingRows.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct AppleMessagesDecodeTraceRowView: View {
+    var row: AppleMessagesDecodeTraceRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                StatusPill(
+                    text: row.failureReason == nil ? "Readable" : "Placeholder",
+                    systemImage: row.failureReason == nil ? "checkmark.bubble" : "exclamationmark.bubble",
+                    tint: row.failureReason == nil ? .green : .red
+                )
+                Text(row.sentAt.detailLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(row.messageGUID)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+
+            DecodeTraceField(
+                title: "message.text",
+                value: messageTextValue
+            )
+            AppleMessagesBlobDecodeTraceLine(title: "attributedBody", trace: row.attributedBody)
+            AppleMessagesBlobDecodeTraceLine(title: "payload_data", trace: row.payloadData)
+            AppleMessagesBlobDecodeTraceLine(title: "message_summary_info", trace: row.messageSummaryInfo)
+            DecodeTraceField(title: "final body", value: row.finalBody)
+
+            if let failureReason = row.failureReason {
+                DecodeTraceField(title: "failure", value: failureReason, tint: .red)
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    private var messageTextValue: String {
+        if let snippet = row.messageTextSnippet {
+            return "present, \(row.messageTextLength) chars, snippet: \(snippet)"
+        }
+        if row.messageTextExists {
+            return "present, \(row.messageTextLength) chars, no usable text after whitespace collapse"
+        }
+        return "missing"
+    }
+}
+
+private struct AppleMessagesBlobDecodeTraceLine: View {
+    var title: String
+    var trace: AppleMessagesBlobDecodeTrace
+
+    var body: some View {
+        DecodeTraceField(title: title, value: value)
+    }
+
+    private var value: String {
+        guard trace.isPresent else {
+            return "missing"
+        }
+
+        var parts = ["present, \(trace.byteLength) bytes"]
+        if let prefix = trace.hexPrefix {
+            parts.append("prefix: \(prefix)")
+        }
+        if let decoded = trace.decodedSnippet {
+            parts.append("decoded: \(decoded)")
+        } else {
+            parts.append("decoded: none")
+        }
+        return parts.joined(separator: " | ")
+    }
+}
+
+private struct DecodeTraceField: View {
+    var title: String
+    var value: String
+    var tint: Color?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 128, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(tint ?? .primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private extension AppleMessagesChatKind {
+    var systemImage: String {
+        switch self {
+        case .direct:
+            return "person.crop.circle"
+        case .group:
+            return "person.3"
+        case .unknown:
+            return "questionmark.circle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .direct:
+            return .blue
+        case .group:
+            return .purple
+        case .unknown:
+            return .secondary
+        }
     }
 }
 
@@ -667,7 +1018,10 @@ private struct AppleMessagesTextDiagnosticRow: View {
                 MetricPill(title: "sent with plain text", value: "\(diagnostics.outgoingWithPlainText)", systemImage: "text.bubble")
                 MetricPill(title: "sent without plain text", value: "\(diagnostics.outgoingWithoutPlainText)", systemImage: "exclamationmark.bubble")
                 MetricPill(title: "sent with attributedBody", value: "\(diagnostics.outgoingWithAttributedBody)", systemImage: "doc.richtext")
-                MetricPill(title: "recoverable sent rows", value: "\(diagnostics.outgoingWithoutPlainTextWithAttributedBody)", systemImage: "arrow.triangle.2.circlepath")
+                MetricPill(title: "decoded attributedBody", value: "\(diagnostics.outgoingDecodedFromAttributedBody)", systemImage: "doc.richtext")
+                MetricPill(title: "decoded payload data", value: "\(diagnostics.outgoingDecodedFromPayloadData)", systemImage: "doc.badge.gearshape")
+                MetricPill(title: "decoded summary info", value: "\(diagnostics.outgoingDecodedFromMessageSummaryInfo)", systemImage: "text.magnifyingglass")
+                MetricPill(title: "still unresolved", value: "\(diagnostics.outgoingUnresolvedAfterDecode)", systemImage: "questionmark.bubble")
                 MetricPill(title: "attachment rows", value: "\(diagnostics.attachmentRows)", systemImage: "paperclip")
                 MetricPill(title: "visible non-text rows", value: "\(diagnostics.visibleNonTextRows)", systemImage: "ellipsis.bubble")
             }
@@ -761,6 +1115,7 @@ private struct GeminiDiagnosticRow: View {
         }
     }
 }
+#endif
 
 struct SuggestionRow: View {
     var suggestion: Suggestion
@@ -1238,6 +1593,7 @@ private extension HealthState {
     }
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
 private extension GeminiDiagnosticOutcome {
     var displayName: String {
         switch self {
@@ -1297,6 +1653,7 @@ private extension GeminiDiagnosticErrorCategory {
         }
     }
 }
+#endif
 
 private extension Date {
     var relativeLabel: String {

@@ -125,6 +125,23 @@ public enum ManualQueueItemState: String, Codable, CaseIterable, Hashable {
     }
 }
 
+public struct ConversationSource: Identifiable, Codable, Equatable {
+    public var id: String
+    public var name: String
+    public var kind: SourceKind
+    public var health: HealthState
+    public var lastSyncAt: Date?
+
+    public init(id: String, name: String, kind: SourceKind, health: HealthState = .available, lastSyncAt: Date? = nil) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.health = health
+        self.lastSyncAt = lastSyncAt
+    }
+}
+
+#if LOOP_INTERNAL_DIAGNOSTICS
 public enum GeminiDiagnosticOutcome: String, Codable, CaseIterable, Hashable {
     case success
     case failure
@@ -141,22 +158,6 @@ public enum GeminiDiagnosticErrorCategory: String, Codable, CaseIterable, Hashab
     case invalidJSON
     case invalidEvidence
     case success
-}
-
-public struct ConversationSource: Identifiable, Codable, Equatable {
-    public var id: String
-    public var name: String
-    public var kind: SourceKind
-    public var health: HealthState
-    public var lastSyncAt: Date?
-
-    public init(id: String, name: String, kind: SourceKind, health: HealthState = .available, lastSyncAt: Date? = nil) {
-        self.id = id
-        self.name = name
-        self.kind = kind
-        self.health = health
-        self.lastSyncAt = lastSyncAt
-    }
 }
 
 public struct GeminiDiagnosticRun: Identifiable, Codable, Equatable {
@@ -210,6 +211,7 @@ public struct GeminiDiagnosticRun: Identifiable, Codable, Equatable {
         self.detail = detail
     }
 }
+#endif
 
 public struct UserProfile: Codable, Equatable {
     public static let defaultID = "default"

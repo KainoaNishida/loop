@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import MinderCore
 
@@ -14,6 +15,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private var permissionService: MacPermissionService?
     private var settingsViewModel: OnboardingViewModel?
     private var queueWindow: NSWindow?
+    private var alertCountCancellable: AnyCancellable?
 
     static func main() {
         let app = NSApplication.shared
@@ -60,10 +62,15 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
 
             let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             statusItem.button?.image = NSImage(systemSymbolName: "checklist.checked", accessibilityDescription: "Loop")
-            statusItem.button?.title = " Loop"
             statusItem.button?.target = self
             statusItem.button?.action = #selector(togglePopover)
             self.statusItem = statusItem
+            updateStatusItemTitle(alertCount: model.activeAlertCount)
+            alertCountCancellable = model.$activeAlertCount
+                .receive(on: RunLoop.main)
+                .sink { [weak self] count in
+                    self?.updateStatusItemTitle(alertCount: count)
+                }
 
             model.refresh()
             model.refreshPermissionHealth()
@@ -96,6 +103,19 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func updateStatusItemTitle(alertCount: Int) {
+        let countLabel: String
+        if alertCount <= 0 {
+            countLabel = ""
+        } else if alertCount > 99 {
+            countLabel = " 99+"
+        } else {
+            countLabel = " \(alertCount)"
+        }
+        statusItem?.button?.title = " Loop\(countLabel)"
+        statusItem?.button?.toolTip = alertCount == 1 ? "Loop: 1 active alert" : "Loop: \(alertCount) active alerts"
     }
 
     @MainActor

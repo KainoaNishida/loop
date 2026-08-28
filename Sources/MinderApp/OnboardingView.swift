@@ -90,8 +90,6 @@ struct OnboardingView: View {
             CloudAIStep(model: model)
         case .privacy:
             PrivacyStep(model: model)
-        case .diagnostics:
-            DiagnosticsSettingsStep(model: model)
         case .about:
             AboutStep()
         case .summary:
@@ -223,8 +221,6 @@ struct LoopSettingsPanelView: View {
             CloudAIStep(model: model)
         case .privacy:
             PrivacyStep(model: model)
-        case .diagnostics:
-            DiagnosticsSettingsStep(model: model)
         case .about:
             AboutStep()
         case .summary:
@@ -372,8 +368,10 @@ private struct MessagesStep: View {
                 primaryAction: { model.openSettings(for: .fullDiskAccess) },
                 secondaryTitle: nil,
                 secondaryAction: nil,
-                helperText: "Grant Full Disk Access to the packaged dev app: run scripts/build-dev-app.sh, then choose .build/LoopDev/Loop.app in System Settings."
+                helperText: "Grant Full Disk Access to the current app bundle shown below. If macOS asks to quit and reopen, return here and use Relaunch Current Build."
             )
+
+            CurrentAppBundleCard(model: model)
 
             SourceSetupCard(
                 title: "Contact Names",
@@ -394,6 +392,63 @@ private struct MessagesStep: View {
                 "3. Add .build/LoopDev/Loop.app, then return and click Check Again.",
                 "4. Optional: request Contacts before importing so handles resolve to names."
             ])
+        }
+    }
+}
+
+private struct CurrentAppBundleCard: View {
+    @ObservedObject var model: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Current Running App", systemImage: "app.badge")
+                    .font(.headline)
+                Spacer()
+                Text(model.currentAppBuildStamp)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.currentAppBundlePath)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("This is the exact app that needs Full Disk Access. Avoid macOS relaunching another Loop copy by using the relaunch button here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    model.revealCurrentAppBundle()
+                } label: {
+                    Label("Reveal App", systemImage: "folder")
+                }
+
+                Button {
+                    model.copyCurrentAppBundlePath()
+                } label: {
+                    Label("Copy Path", systemImage: "doc.on.doc")
+                }
+
+                Button {
+                    model.relaunchCurrentAppBundle()
+                } label: {
+                    Label("Relaunch Current Build", systemImage: "arrow.clockwise.circle")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+        }
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
@@ -526,6 +581,7 @@ private struct PrivacyStep: View {
     }
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
 private struct DiagnosticsSettingsStep: View {
     @ObservedObject var model: OnboardingViewModel
 
@@ -533,22 +589,35 @@ private struct DiagnosticsSettingsStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Diagnostics",
-                subtitle: "Diagnostics report counts and health states without showing raw message bodies."
+                subtitle: "Diagnostics report counts, health states, and a temporary local Messages decode trace."
             )
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Button {
+                        model.runAppleMessagesDecodeTrace()
+                    } label: {
+                        Label("Run Mom/Hunter Trace", systemImage: "text.magnifyingglass")
+                    }
+                    .disabled(model.isWorking)
+
+                    Button {
                         model.runAppleMessagesTextDiagnostic()
                     } label: {
                         Label("Check Messages Text", systemImage: "text.bubble")
                     }
+                    .disabled(model.isWorking)
 
-                    Button("Clear Cloud AI Diagnostics") {
+                    Button("Clear Diagnostics") {
                         model.clearGeminiDiagnostics()
                     }
+                    .disabled(model.isWorking)
                 }
                 .controlSize(.small)
+
+                if let report = model.appleMessagesDecodeTraceReport {
+                    OnboardingMessagesDecodeTraceView(report: report)
+                }
 
                 if let diagnostics = model.appleMessagesTextDiagnostics {
                     VStack(alignment: .leading, spacing: 8) {
@@ -557,13 +626,13 @@ private struct DiagnosticsSettingsStep: View {
                         Text("Since \(diagnostics.checkedSince.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(diagnostics.outgoingWithPlainText) sent rows have plain text. \(diagnostics.outgoingWithoutPlainTextWithAttributedBody) sent rows can be recovered from attributed bodies. \(diagnostics.attachmentRows) rows include attachments.")
+                        Text("\(diagnostics.outgoingWithPlainText) sent rows have plain text. \(diagnostics.recoveredOutgoingWithoutPlainTextCount) sent rows can be recovered from alternate message payloads. \(diagnostics.outgoingUnresolvedAfterDecode) sent rows are still unresolved.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                } else {
-                    Text("Run the Messages text check after granting Full Disk Access to confirm outgoing message bodies are recoverable.")
+                } else if model.appleMessagesDecodeTraceReport == nil {
+                    Text("Run the Mom/Hunter trace after granting Full Disk Access to see exactly where each outgoing body is stored. Snippets stay in memory and are not written to Loop storage.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -578,6 +647,150 @@ private struct DiagnosticsSettingsStep: View {
     }
 }
 
+private struct OnboardingMessagesDecodeTraceView: View {
+    var report: AppleMessagesDecodeTraceReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Messages Decode Trace", systemImage: "text.magnifyingglass")
+                    .font(.headline)
+                Spacer()
+                Text(report.checkedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("\(report.threadMatches.count) chat matches. \(report.outgoingRowCount) sent rows. \(report.placeholderRowCount) placeholders.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            if !report.unmatchedTitles.isEmpty {
+                Text("No matching chat title or contact-resolved participant found for \(report.unmatchedTitles.joined(separator: ", ")).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(report.threadMatches) { thread in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("\(thread.chatTitle) · \(thread.chatKind.displayName)")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text("\(thread.outgoingRows.count) sent")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(thread.chatGUID)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+
+                    if thread.outgoingRows.isEmpty {
+                        Text("No outgoing rows found since \(report.checkedSince.formatted(date: .abbreviated, time: .shortened)).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(thread.outgoingRows) { row in
+                            OnboardingMessagesDecodeTraceRowView(row: row)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            Text("Temporary local trace only. Snippets are not written to Loop storage or files.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct OnboardingMessagesDecodeTraceRowView: View {
+    var row: AppleMessagesDecodeTraceRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label(row.failureReason == nil ? "Readable" : "Placeholder", systemImage: row.failureReason == nil ? "checkmark.bubble" : "exclamationmark.bubble")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(row.failureReason == nil ? .green : .red)
+                Text(row.sentAt.formatted(date: .omitted, time: .shortened))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(row.messageGUID)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            OnboardingTraceLine(title: "message.text", value: messageTextValue)
+            OnboardingTraceLine(title: "attributedBody", value: blobValue(row.attributedBody))
+            OnboardingTraceLine(title: "payload_data", value: blobValue(row.payloadData))
+            OnboardingTraceLine(title: "summary_info", value: blobValue(row.messageSummaryInfo))
+            OnboardingTraceLine(title: "final body", value: row.finalBody)
+            if let failureReason = row.failureReason {
+                OnboardingTraceLine(title: "failure", value: failureReason, tint: .red)
+            }
+        }
+        .padding(.vertical, 4)
+        .textSelection(.enabled)
+    }
+
+    private var messageTextValue: String {
+        if let snippet = row.messageTextSnippet {
+            return "present, \(row.messageTextLength) chars, snippet: \(snippet)"
+        }
+        if row.messageTextExists {
+            return "present, \(row.messageTextLength) chars, no usable text after whitespace collapse"
+        }
+        return "missing"
+    }
+
+    private func blobValue(_ trace: AppleMessagesBlobDecodeTrace) -> String {
+        guard trace.isPresent else {
+            return "missing"
+        }
+        var parts = ["present, \(trace.byteLength) bytes"]
+        if let prefix = trace.hexPrefix {
+            parts.append("prefix: \(prefix)")
+        }
+        if let decodedSnippet = trace.decodedSnippet {
+            parts.append("decoded: \(decodedSnippet)")
+        } else {
+            parts.append("decoded: none")
+        }
+        return parts.joined(separator: " | ")
+    }
+}
+
+private struct OnboardingTraceLine: View {
+    var title: String
+    var value: String
+    var tint: Color?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 104, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(tint ?? .primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+}
+#endif
+
 private struct AboutStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -590,6 +803,8 @@ private struct AboutStep: View {
                 AboutRow(title: "Channel", value: LoopReleaseChannel.current().displayName)
                 AboutRow(title: "Bundle ID", value: Bundle.main.bundleIdentifier ?? LoopReleaseChannel.current().bundleIdentifier)
                 AboutRow(title: "Version", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"))")
+                AboutRow(title: "Build", value: Bundle.main.object(forInfoDictionaryKey: "LoopDevBuildStamp") as? String ?? "unstamped")
+                AboutRow(title: "Bundle path", value: Bundle.main.bundleURL.path)
                 AboutRow(title: "Local data", value: LoopReleaseChannel.current().appSupportDirectoryName)
             }
         }
@@ -906,9 +1121,11 @@ private struct AboutRow: View {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 96, alignment: .leading)
             Text(value)
                 .font(.system(.callout, design: .monospaced))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             Spacer()
         }

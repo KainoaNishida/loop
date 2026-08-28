@@ -1,4 +1,5 @@
 import Combine
+import AppKit
 import Foundation
 import MinderCore
 
@@ -8,7 +9,10 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var permissionHealth: [PermissionHealth] = []
     @Published private(set) var sources: [ConversationSource] = []
     @Published private(set) var lastImportResults: [SourceKind: ImportResult] = [:]
+#if LOOP_INTERNAL_DIAGNOSTICS
     @Published private(set) var appleMessagesTextDiagnostics: AppleMessagesTextDiagnostics?
+    @Published private(set) var appleMessagesDecodeTraceReport: AppleMessagesDecodeTraceReport?
+#endif
     @Published var selectedStep: OnboardingStep = .welcome
     @Published var statusMessage: String = "Setup is ready."
     @Published var geminiAPIKeyInput: String = ""
@@ -115,6 +119,14 @@ final class OnboardingViewModel: ObservableObject {
 
     var canRequestContacts: Bool {
         health(for: .contacts).state != .available
+    }
+
+    var currentAppBundlePath: String {
+        Bundle.main.bundleURL.path
+    }
+
+    var currentAppBuildStamp: String {
+        Bundle.main.object(forInfoDictionaryKey: "LoopDevBuildStamp") as? String ?? "unstamped"
     }
 
     var messagesNextAction: String? {
@@ -268,14 +280,31 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     func runAppleMessagesTextDiagnostic() {
         perform("Checking Messages text storage...") {
             let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86_400)
             let diagnostics = try self.messagesImporter.textDiagnostics(since: cutoff)
             self.appleMessagesTextDiagnostics = diagnostics
-            self.statusMessage = "Messages text check complete: \(diagnostics.outgoingWithoutPlainTextWithAttributedBody) sent rows can be recovered from attributed bodies."
+            self.statusMessage = "Messages text check complete: \(diagnostics.recoveredOutgoingWithoutPlainTextCount) sent rows can be recovered; \(diagnostics.outgoingUnresolvedAfterDecode) still need another decoder."
         }
     }
+
+    func runAppleMessagesDecodeTrace() {
+        perform("Tracing Mom/Hunter Messages decoding...") {
+            let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86_400)
+            let targets = ["Mom", "Hunter", "ksm"]
+            let report = try self.messagesImporter.decodeTrace(
+                threadTitleMatches: targets,
+                aliasesByTitle: appleMessagesDecodeTraceAliases(for: targets, store: self.store),
+                since: cutoff,
+                limitPerThread: 12
+            )
+            self.appleMessagesDecodeTraceReport = report
+            self.statusMessage = "Messages decode trace complete: \(report.threadMatches.count) chat matches, \(report.outgoingRowCount) sent rows, \(report.placeholderRowCount) placeholders."
+        }
+    }
+#endif
 
     func clearGeneratedSuggestions() {
         perform("Deleting generated suggestions...") {
@@ -294,13 +323,17 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     func clearGeminiDiagnostics() {
         perform("Clearing Cloud AI diagnostics...") {
             try self.store.clearGeminiDiagnosticRuns()
-            self.statusMessage = "Cleared Cloud AI diagnostics."
+            self.appleMessagesTextDiagnostics = nil
+            self.appleMessagesDecodeTraceReport = nil
+            self.statusMessage = "Cleared diagnostics."
             self.onChange()
         }
     }
+#endif
 
     func eraseAllData() {
         perform("Deleting all local Loop data...") {
@@ -309,7 +342,10 @@ final class OnboardingViewModel: ObservableObject {
             self.permissionHealth = []
             self.sources = []
             self.lastImportResults = [:]
+#if LOOP_INTERNAL_DIAGNOSTICS
             self.appleMessagesTextDiagnostics = nil
+            self.appleMessagesDecodeTraceReport = nil
+#endif
             self.statusMessage = "Deleted all local Loop data."
             self.onChange()
         }
@@ -318,7 +354,35 @@ final class OnboardingViewModel: ObservableObject {
     func openSettings(for kind: PermissionKind) {
         perform("Opening System Settings...") {
             let opened = await self.coordinator.openSystemSettings(for: kind)
-            self.statusMessage = opened ? "Opened System Settings for \(kind.displayName)." : "Could not open System Settings for \(kind.displayName)."
+            if opened, kind == .fullDiskAccess || kind == .appleMessages {
+                self.statusMessage = "Opened Full Disk Access. Add or toggle the current app bundle, then return to Loop and use Relaunch Current Build."
+            } else {
+                self.statusMessage = opened ? "Opened System Settings for \(kind.displayName)." : "Could not open System Settings for \(kind.displayName)."
+            }
+        }
+    }
+
+    func revealCurrentAppBundle() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        statusMessage = "Revealed the current Loop app bundle in Finder."
+    }
+
+    func copyCurrentAppBundlePath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(currentAppBundlePath, forType: .string)
+        statusMessage = "Copied current app bundle path."
+    }
+
+    func relaunchCurrentAppBundle() {
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = ["-n", Bundle.main.bundleURL.path]
+            try process.run()
+            statusMessage = "Relaunching current Loop build..."
+            NSApp.terminate(nil)
+        } catch {
+            statusMessage = "Could not relaunch current Loop build: \(error.localizedDescription)"
         }
     }
 
@@ -384,12 +448,11 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
     case messages
     case cloudAI
     case privacy
-    case diagnostics
     case about
     case summary
 
     static var allCases: [OnboardingStep] {
-        [.welcome, .profile, .messages, .cloudAI, .privacy, .diagnostics, .about, .summary]
+        return [.welcome, .profile, .messages, .cloudAI, .privacy, .about, .summary]
     }
 
     var id: String { rawValue }
@@ -401,7 +464,6 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
         case .messages: return "Messages"
         case .cloudAI: return "AI"
         case .privacy: return "Privacy"
-        case .diagnostics: return "Diagnostics"
         case .about: return "About"
         case .summary: return "Summary"
         }
@@ -414,7 +476,6 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
         case .messages: return "message"
         case .cloudAI: return "cloud"
         case .privacy: return "hand.raised"
-        case .diagnostics: return "stethoscope"
         case .about: return "info.circle"
         case .summary: return "checkmark.seal"
         }

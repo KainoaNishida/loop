@@ -30,14 +30,25 @@ public enum AppleMessagesImportError: Error, LocalizedError, Equatable {
     }
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
 public struct AppleMessagesTextDiagnostics: Equatable {
     public var checkedSince: Date
     public var outgoingWithPlainText: Int
     public var outgoingWithoutPlainText: Int
     public var outgoingWithAttributedBody: Int
     public var outgoingWithoutPlainTextWithAttributedBody: Int
+    public var outgoingDecodedFromAttributedBody: Int
+    public var outgoingDecodedFromPayloadData: Int
+    public var outgoingDecodedFromMessageSummaryInfo: Int
+    public var outgoingUnresolvedAfterDecode: Int
     public var attachmentRows: Int
     public var visibleNonTextRows: Int
+
+    public var recoveredOutgoingWithoutPlainTextCount: Int {
+        outgoingDecodedFromAttributedBody
+            + outgoingDecodedFromPayloadData
+            + outgoingDecodedFromMessageSummaryInfo
+    }
 
     public init(
         checkedSince: Date,
@@ -45,6 +56,10 @@ public struct AppleMessagesTextDiagnostics: Equatable {
         outgoingWithoutPlainText: Int,
         outgoingWithAttributedBody: Int,
         outgoingWithoutPlainTextWithAttributedBody: Int,
+        outgoingDecodedFromAttributedBody: Int = 0,
+        outgoingDecodedFromPayloadData: Int = 0,
+        outgoingDecodedFromMessageSummaryInfo: Int = 0,
+        outgoingUnresolvedAfterDecode: Int = 0,
         attachmentRows: Int,
         visibleNonTextRows: Int
     ) {
@@ -53,10 +68,150 @@ public struct AppleMessagesTextDiagnostics: Equatable {
         self.outgoingWithoutPlainText = outgoingWithoutPlainText
         self.outgoingWithAttributedBody = outgoingWithAttributedBody
         self.outgoingWithoutPlainTextWithAttributedBody = outgoingWithoutPlainTextWithAttributedBody
+        self.outgoingDecodedFromAttributedBody = outgoingDecodedFromAttributedBody
+        self.outgoingDecodedFromPayloadData = outgoingDecodedFromPayloadData
+        self.outgoingDecodedFromMessageSummaryInfo = outgoingDecodedFromMessageSummaryInfo
+        self.outgoingUnresolvedAfterDecode = outgoingUnresolvedAfterDecode
         self.attachmentRows = attachmentRows
         self.visibleNonTextRows = visibleNonTextRows
     }
 }
+
+public struct AppleMessagesDecodeTraceReport: Equatable {
+    public var checkedSince: Date
+    public var checkedAt: Date
+    public var targetTitles: [String]
+    public var unmatchedTitles: [String]
+    public var threadMatches: [AppleMessagesDecodeTraceThread]
+
+    public var outgoingRowCount: Int {
+        threadMatches.reduce(0) { $0 + $1.outgoingRows.count }
+    }
+
+    public var placeholderRowCount: Int {
+        threadMatches.reduce(0) { count, thread in
+            count + thread.outgoingRows.filter { $0.failureReason != nil }.count
+        }
+    }
+
+    public init(
+        checkedSince: Date,
+        checkedAt: Date,
+        targetTitles: [String],
+        unmatchedTitles: [String],
+        threadMatches: [AppleMessagesDecodeTraceThread]
+    ) {
+        self.checkedSince = checkedSince
+        self.checkedAt = checkedAt
+        self.targetTitles = targetTitles
+        self.unmatchedTitles = unmatchedTitles
+        self.threadMatches = threadMatches
+    }
+}
+
+public enum AppleMessagesChatKind: String, Equatable {
+    case direct
+    case group
+    case unknown
+
+    public var displayName: String {
+        switch self {
+        case .direct:
+            return "Direct"
+        case .group:
+            return "Group"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+}
+
+public struct AppleMessagesDecodeTraceThread: Identifiable, Equatable {
+    public var requestedTitle: String
+    public var chatTitle: String
+    public var chatGUID: String
+    public var chatKind: AppleMessagesChatKind
+    public var outgoingRows: [AppleMessagesDecodeTraceRow]
+
+    public var id: String {
+        "\(requestedTitle.lowercased()):\(chatGUID)"
+    }
+
+    public init(
+        requestedTitle: String,
+        chatTitle: String,
+        chatGUID: String,
+        chatKind: AppleMessagesChatKind,
+        outgoingRows: [AppleMessagesDecodeTraceRow]
+    ) {
+        self.requestedTitle = requestedTitle
+        self.chatTitle = chatTitle
+        self.chatGUID = chatGUID
+        self.chatKind = chatKind
+        self.outgoingRows = outgoingRows
+    }
+}
+
+public struct AppleMessagesDecodeTraceRow: Identifiable, Equatable {
+    public var messageGUID: String
+    public var sentAt: Date
+    public var messageTextExists: Bool
+    public var messageTextLength: Int
+    public var messageTextSnippet: String?
+    public var attributedBody: AppleMessagesBlobDecodeTrace
+    public var payloadData: AppleMessagesBlobDecodeTrace
+    public var messageSummaryInfo: AppleMessagesBlobDecodeTrace
+    public var finalBody: String
+    public var failureReason: String?
+
+    public var id: String {
+        messageGUID
+    }
+
+    public init(
+        messageGUID: String,
+        sentAt: Date,
+        messageTextExists: Bool,
+        messageTextLength: Int,
+        messageTextSnippet: String?,
+        attributedBody: AppleMessagesBlobDecodeTrace,
+        payloadData: AppleMessagesBlobDecodeTrace,
+        messageSummaryInfo: AppleMessagesBlobDecodeTrace,
+        finalBody: String,
+        failureReason: String?
+    ) {
+        self.messageGUID = messageGUID
+        self.sentAt = sentAt
+        self.messageTextExists = messageTextExists
+        self.messageTextLength = messageTextLength
+        self.messageTextSnippet = messageTextSnippet
+        self.attributedBody = attributedBody
+        self.payloadData = payloadData
+        self.messageSummaryInfo = messageSummaryInfo
+        self.finalBody = finalBody
+        self.failureReason = failureReason
+    }
+}
+
+public struct AppleMessagesBlobDecodeTrace: Equatable {
+    public var isPresent: Bool
+    public var byteLength: Int
+    public var hexPrefix: String?
+    public var decodedSnippet: String?
+
+    public init(
+        isPresent: Bool,
+        byteLength: Int,
+        hexPrefix: String?,
+        decodedSnippet: String?
+    ) {
+        self.isPresent = isPresent
+        self.byteLength = byteLength
+        self.hexPrefix = hexPrefix
+        self.decodedSnippet = decodedSnippet
+    }
+}
+#endif
 
 public enum AppleMessagesSchemaValidator {
     public static func validate(databaseURL: URL) throws -> AppleMessagesSchemaValidation {
@@ -91,6 +246,7 @@ public enum AppleMessagesSchemaValidator {
 public final class AppleMessagesConversationImporter: ConversationImporting {
     public let sourceKind: SourceKind = .appleMessages
     public let sourceName = "Apple Messages"
+    private static let sentReplyWithoutPlainTextPlaceholder = "[Sent reply without plain text]"
 
     private let databaseURL: URL
     private let maxMessages: Int
@@ -124,6 +280,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         try performImport(into: store, since: cutoff)
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     public func textDiagnostics(since cutoff: Date) throws -> AppleMessagesTextDiagnostics {
         let validation = try AppleMessagesSchemaValidator.validate(databaseURL: databaseURL)
         guard validation.isCompatible else {
@@ -136,6 +293,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
             diagnosticsSQL(schema: importSchema),
             [.int(Int(AppleMessagesDateCodec.messageDateValue(from: cutoff)))]
         )
+        let decodeDiagnostics = try outgoingDecodeDiagnostics(database: database, schema: importSchema, cutoff: cutoff)
         let row = rows.first ?? [:]
         return AppleMessagesTextDiagnostics(
             checkedSince: cutoff,
@@ -143,10 +301,92 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
             outgoingWithoutPlainText: diagnosticInt(row, "outgoing_without_plain_text"),
             outgoingWithAttributedBody: diagnosticInt(row, "outgoing_with_attributed_body"),
             outgoingWithoutPlainTextWithAttributedBody: diagnosticInt(row, "outgoing_without_plain_text_with_attributed_body"),
+            outgoingDecodedFromAttributedBody: decodeDiagnostics.attributedBody,
+            outgoingDecodedFromPayloadData: decodeDiagnostics.payloadData,
+            outgoingDecodedFromMessageSummaryInfo: decodeDiagnostics.messageSummaryInfo,
+            outgoingUnresolvedAfterDecode: decodeDiagnostics.unresolved,
             attachmentRows: diagnosticInt(row, "attachment_rows"),
             visibleNonTextRows: diagnosticInt(row, "visible_non_text_rows")
         )
     }
+#endif
+
+#if LOOP_INTERNAL_DIAGNOSTICS
+    public func decodeTrace(
+        threadTitleMatches: [String] = ["Mom", "Hunter", "ksm"],
+        aliasesByTitle: [String: [String]] = [:],
+        since cutoff: Date,
+        limitPerThread: Int = 12
+    ) throws -> AppleMessagesDecodeTraceReport {
+        let validation = try AppleMessagesSchemaValidator.validate(databaseURL: databaseURL)
+        guard validation.isCompatible else {
+            throw AppleMessagesImportError.incompatibleSchema(validation.missingItems)
+        }
+
+        let database = try SQLiteReadOnlyDatabase(url: databaseURL)
+        let importSchema = try AppleMessagesImportSchema(database: database)
+        let targets = threadTitleMatches
+            .map(\.collapsedWhitespace)
+            .filter { !$0.isEmpty }
+        let normalizedAliasesByTitle = aliasesByTitle.reduce(into: [String: [String]]()) { result, pair in
+            let key = pair.key.collapsedWhitespace
+            guard !key.isEmpty else { return }
+            result[key] = uniqueCollapsed(pair.value)
+        }
+        let boundedLimit = max(1, min(limitPerThread, 50))
+        let cutoffValue = Int(AppleMessagesDateCodec.messageDateValue(from: cutoff))
+        let chatCandidates = try traceChatCandidates(database: database, schema: importSchema)
+        var threadMatches: [AppleMessagesDecodeTraceThread] = []
+        var unmatchedTitles: [String] = []
+
+        for target in targets {
+            let matchTargets = uniqueCollapsed([target] + (normalizedAliasesByTitle[target] ?? []))
+            let chatMatches = chatCandidates
+                .filter { $0.matchesAny(matchTargets) }
+                .sorted { lhs, rhs in
+                    let lhsRank = lhs.bestMatchRank(for: matchTargets)
+                    let rhsRank = rhs.bestMatchRank(for: matchTargets)
+                    if lhsRank != rhsRank {
+                        return lhsRank < rhsRank
+                    }
+                    return lhs.rowID > rhs.rowID
+                }
+                .prefix(5)
+
+            if chatMatches.isEmpty {
+                unmatchedTitles.append(target)
+                continue
+            }
+
+            for chat in chatMatches {
+                let outgoingRows = try database.query(
+                    decodeTraceSQL(schema: importSchema),
+                    [
+                        .int(chat.rowID),
+                        .int(cutoffValue),
+                        .int(boundedLimit)
+                    ]
+                )
+                let traceRows = outgoingRows.compactMap(decodeTraceRow(from:))
+                threadMatches.append(AppleMessagesDecodeTraceThread(
+                    requestedTitle: target,
+                    chatTitle: chat.resolvedTitle,
+                    chatGUID: chat.guid,
+                    chatKind: chatKind(from: chat.guid),
+                    outgoingRows: traceRows
+                ))
+            }
+        }
+
+        return AppleMessagesDecodeTraceReport(
+            checkedSince: cutoff,
+            checkedAt: Date(),
+            targetTitles: targets,
+            unmatchedTitles: unmatchedTitles,
+            threadMatches: threadMatches
+        )
+    }
+#endif
 
     func performImport(into store: MinderStore, since cutoff: Date) throws -> ImportResult {
         let validation = try AppleMessagesSchemaValidator.validate(databaseURL: databaseURL)
@@ -248,6 +488,14 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
             return attributedBody
         }
 
+        if let payloadData = AppleMessagesAttributedBodyDecoder.decodeText(fromHex: row["payload_data_hex"] ?? nil) {
+            return payloadData
+        }
+
+        if let messageSummary = AppleMessagesAttributedBodyDecoder.decodeText(fromHex: row["message_summary_info_hex"] ?? nil) {
+            return messageSummary
+        }
+
         if let attachmentLabel = attachmentBody(from: row) {
             return attachmentLabel
         }
@@ -255,7 +503,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         // Some visible sent replies are stored by Messages without a plain text value.
         // A local marker is enough for ranking to know the user replied.
         if isFromUser {
-            return "[Sent reply without plain text]"
+            return Self.sentReplyWithoutPlainTextPlaceholder
         }
 
         if isVisibleNonTextMessage(row) {
@@ -265,9 +513,172 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         return nil
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
+    private func decodeTraceRow(from row: [String: String?]) -> AppleMessagesDecodeTraceRow? {
+        guard
+            let rawDate = row["date_value"] ?? nil,
+            let dateValue = Int64(rawDate)
+        else {
+            return nil
+        }
+
+        let messageRowID = (row["message_rowid"] ?? nil) ?? UUID().uuidString
+        let rawMessageText = row["body"] ?? nil
+        let messageTextSnippet = snippet(rawMessageText?.collapsedWhitespace.nilIfEmpty)
+        let attributedBody = blobDecodeTrace(fromHex: row["attributed_body_hex"] ?? nil)
+        let payloadData = blobDecodeTrace(fromHex: row["payload_data_hex"] ?? nil)
+        let messageSummaryInfo = blobDecodeTrace(fromHex: row["message_summary_info_hex"] ?? nil)
+        let finalBody = messageBody(from: row, isFromUser: true)
+            ?? Self.sentReplyWithoutPlainTextPlaceholder
+
+        return AppleMessagesDecodeTraceRow(
+            messageGUID: (row["message_guid"] ?? nil)?.nilIfEmpty ?? "ROWID \(messageRowID)",
+            sentAt: AppleMessagesDateCodec.date(fromMessageDateValue: dateValue),
+            messageTextExists: rawMessageText != nil,
+            messageTextLength: rawMessageText?.count ?? 0,
+            messageTextSnippet: messageTextSnippet,
+            attributedBody: attributedBody,
+            payloadData: payloadData,
+            messageSummaryInfo: messageSummaryInfo,
+            finalBody: snippet(finalBody) ?? finalBody,
+            failureReason: decodeTraceFailureReason(
+                finalBody: finalBody,
+                rawMessageText: rawMessageText,
+                attributedBody: attributedBody,
+                payloadData: payloadData,
+                messageSummaryInfo: messageSummaryInfo
+            )
+        )
+    }
+
+    private func blobDecodeTrace(fromHex hex: String?) -> AppleMessagesBlobDecodeTrace {
+        guard let hex = hex?.nilIfEmpty else {
+            return AppleMessagesBlobDecodeTrace(
+                isPresent: false,
+                byteLength: 0,
+                hexPrefix: nil,
+                decodedSnippet: nil
+            )
+        }
+
+        let decodedSnippet = snippet(AppleMessagesAttributedBodyDecoder.decodeText(fromHex: hex))
+        return AppleMessagesBlobDecodeTrace(
+            isPresent: true,
+            byteLength: hex.count / 2,
+            hexPrefix: String(hex.prefix(64)),
+            decodedSnippet: decodedSnippet
+        )
+    }
+
+    private func decodeTraceFailureReason(
+        finalBody: String,
+        rawMessageText: String?,
+        attributedBody: AppleMessagesBlobDecodeTrace,
+        payloadData: AppleMessagesBlobDecodeTrace,
+        messageSummaryInfo: AppleMessagesBlobDecodeTrace
+    ) -> String? {
+        guard finalBody == Self.sentReplyWithoutPlainTextPlaceholder else {
+            return nil
+        }
+
+        if rawMessageText != nil {
+            return "message.text exists, but collapses to an empty string."
+        }
+
+        let blobs = [attributedBody, payloadData, messageSummaryInfo]
+        if blobs.contains(where: { $0.decodedSnippet != nil }) {
+            return "A decoder returned text, but import selection still produced the placeholder."
+        }
+        if blobs.contains(where: \.isPresent) {
+            return "Supported blob data is present, but current decoders returned no text."
+        }
+        return "No message.text or supported blob columns had data."
+    }
+
     private func diagnosticInt(_ row: [String: String?], _ column: String) -> Int {
         Int((row[column] ?? nil) ?? "0") ?? 0
     }
+
+    private func traceChatCandidates(database: SQLiteReadOnlyDatabase, schema: AppleMessagesImportSchema) throws -> [AppleMessagesTraceChatCandidate] {
+        try database.query(traceChatCandidatesSQL(schema: schema)).compactMap { row in
+            guard
+                let rawRowID = row["chat_rowid"] ?? nil,
+                let rowID = Int(rawRowID),
+                let guid = row["chat_guid"] ?? nil
+            else {
+                return nil
+            }
+
+            let handles = uniqueCollapsed(
+                splitTraceHandles(row["message_handles"] ?? nil)
+                    + splitTraceHandles(row["chat_handles"] ?? nil)
+                    + directTraceHandles(from: guid)
+            )
+            let participantLabels = uniqueCollapsed(handles
+                .map { contactResolver.displayName(for: $0) ?? $0 }
+            )
+
+            return AppleMessagesTraceChatCandidate(
+                rowID: rowID,
+                guid: guid,
+                rawTitle: (row["chat_title"] ?? nil)?.collapsedWhitespace.nilIfEmpty,
+                participantHandles: handles,
+                participantLabels: participantLabels
+            )
+        }
+    }
+
+    private func traceChatCandidatesSQL(schema: AppleMessagesImportSchema) -> String {
+        """
+        SELECT
+            chat.ROWID AS chat_rowid,
+            chat.guid AS chat_guid,
+            chat.display_name AS chat_title,
+            group_concat(DISTINCT message_handle.id) AS message_handles,
+            \(schema.chatHandleSelect)
+        FROM chat
+        LEFT JOIN chat_message_join ON chat_message_join.chat_id = chat.ROWID
+        LEFT JOIN message ON message.ROWID = chat_message_join.message_id
+        LEFT JOIN handle AS message_handle ON message_handle.ROWID = message.handle_id
+        \(schema.chatHandleJoinSQL)
+        GROUP BY chat.ROWID
+        """
+    }
+
+    private func splitTraceHandles(_ raw: String?) -> [String] {
+        (raw ?? "")
+            .split(separator: ",")
+            .map(String.init)
+            .map(\.collapsedWhitespace)
+            .filter { !$0.isEmpty }
+    }
+
+    private func directTraceHandles(from guid: String) -> [String] {
+        guard let separator = guid.range(of: ";-;") else {
+            return []
+        }
+        let rawHandle = String(guid[separator.upperBound...]).collapsedWhitespace
+        guard !rawHandle.isEmpty else {
+            return []
+        }
+        return [rawHandle]
+    }
+
+    private func uniqueCollapsed(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.compactMap { value in
+            let collapsed = value.collapsedWhitespace
+            guard !collapsed.isEmpty else {
+                return nil
+            }
+            let key = collapsed.lowercased()
+            guard seen.insert(key).inserted else {
+                return nil
+            }
+            return collapsed
+        }
+    }
+#endif
 
     private func importSQL(schema: AppleMessagesImportSchema) -> String {
         """
@@ -286,6 +697,8 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
             \(schema.cacheHasAttachmentsSelect),
             \(schema.associatedMessageTypeSelect),
             \(schema.balloonBundleIDSelect),
+            \(schema.payloadDataHexSelect),
+            \(schema.messageSummaryInfoHexSelect),
             \(schema.attachmentSummarySelect)
         FROM message
         JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
@@ -298,6 +711,42 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
                 OR message.is_from_me = 1
                 OR \(schema.visibleNonTextCondition)
             )
+        ORDER BY message.date DESC
+        LIMIT ?
+        )
+        ORDER BY date_value ASC
+        """
+    }
+
+#if LOOP_INTERNAL_DIAGNOSTICS
+    private func decodeTraceSQL(schema: AppleMessagesImportSchema) -> String {
+        """
+        SELECT *
+        FROM (
+        SELECT
+            chat.guid AS chat_guid,
+            chat.display_name AS chat_title,
+            message.ROWID AS message_rowid,
+            message.guid AS message_guid,
+            message.text AS body,
+            message.date AS date_value,
+            message.is_from_me AS is_from_me,
+            handle.id AS handle_id,
+            \(schema.attributedBodyHexSelect),
+            \(schema.cacheHasAttachmentsSelect),
+            \(schema.associatedMessageTypeSelect),
+            \(schema.balloonBundleIDSelect),
+            \(schema.payloadDataHexSelect),
+            \(schema.messageSummaryInfoHexSelect),
+            \(schema.attachmentSummarySelect)
+        FROM message
+        JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+        JOIN chat ON chat.ROWID = chat_message_join.chat_id
+        LEFT JOIN handle ON handle.ROWID = message.handle_id
+        \(schema.attachmentJoinSQL)
+        WHERE chat.ROWID = ?
+            AND message.date >= ?
+            AND message.is_from_me = 1
         ORDER BY message.date DESC
         LIMIT ?
         )
@@ -321,6 +770,66 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         WHERE message.date >= ?
         """
     }
+
+    private func chatKind(from guid: String) -> AppleMessagesChatKind {
+        if guid.contains(";+;") {
+            return .group
+        }
+        if guid.contains(";-;") {
+            return .direct
+        }
+        return .unknown
+    }
+
+    private func snippet(_ text: String?, maxLength: Int = 180) -> String? {
+        guard let text = text?.collapsedWhitespace.nilIfEmpty else {
+            return nil
+        }
+        guard text.count > maxLength else {
+            return text
+        }
+        return "\(text.prefix(maxLength))..."
+    }
+
+    private func outgoingDecodeDiagnostics(
+        database: SQLiteReadOnlyDatabase,
+        schema: AppleMessagesImportSchema,
+        cutoff: Date
+    ) throws -> AppleMessagesDecodeDiagnostics {
+        let rows = try database.query(
+            outgoingDecodeDiagnosticsSQL(schema: schema),
+            [.int(Int(AppleMessagesDateCodec.messageDateValue(from: cutoff)))]
+        )
+        var diagnostics = AppleMessagesDecodeDiagnostics()
+        for row in rows {
+            if AppleMessagesAttributedBodyDecoder.decodeText(fromHex: row["attributed_body_hex"] ?? nil) != nil {
+                diagnostics.attributedBody += 1
+            } else if AppleMessagesAttributedBodyDecoder.decodeText(fromHex: row["payload_data_hex"] ?? nil) != nil {
+                diagnostics.payloadData += 1
+            } else if AppleMessagesAttributedBodyDecoder.decodeText(fromHex: row["message_summary_info_hex"] ?? nil) != nil {
+                diagnostics.messageSummaryInfo += 1
+            } else {
+                diagnostics.unresolved += 1
+            }
+        }
+        return diagnostics
+    }
+
+    private func outgoingDecodeDiagnosticsSQL(schema: AppleMessagesImportSchema) -> String {
+        let textMissing = "(message.text IS NULL OR length(trim(message.text)) = 0)"
+        return """
+        SELECT
+            message.guid AS message_guid,
+            \(schema.attributedBodyHexSelect),
+            \(schema.payloadDataHexSelect),
+            \(schema.messageSummaryInfoHexSelect)
+        FROM message
+        WHERE message.date >= ?
+            AND message.is_from_me = 1
+            AND \(textMissing)
+        """
+    }
+#endif
 
     private func attachmentBody(from row: [String: String?]) -> String? {
         let summary = (row["attachment_summary"] ?? nil)?.lowercased().nilIfEmpty
@@ -357,14 +866,81 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
     }
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
+private struct AppleMessagesDecodeDiagnostics {
+    var attributedBody = 0
+    var payloadData = 0
+    var messageSummaryInfo = 0
+    var unresolved = 0
+}
+
+private struct AppleMessagesTraceChatCandidate {
+    var rowID: Int
+    var guid: String
+    var rawTitle: String?
+    var participantHandles: [String]
+    var participantLabels: [String]
+
+    var resolvedTitle: String {
+        if let rawTitle {
+            return rawTitle
+        }
+        if !participantLabels.isEmpty {
+            return participantLabels.sorted().joined(separator: ", ")
+        }
+        return guid
+    }
+
+    func matches(_ target: String) -> Bool {
+        let normalizedTarget = target.lowercased()
+        guard !normalizedTarget.isEmpty else {
+            return false
+        }
+        return searchableValues.contains { $0.lowercased().contains(normalizedTarget) }
+    }
+
+    func matchesAny(_ targets: [String]) -> Bool {
+        targets.contains { matches($0) }
+    }
+
+    func matchRank(for target: String) -> Int {
+        let normalizedTarget = target.lowercased()
+        let values = searchableValues.map { $0.lowercased() }
+        if values.contains(normalizedTarget) {
+            return 0
+        }
+        if values.contains(where: { $0.hasPrefix(normalizedTarget) }) {
+            return 1
+        }
+        return 2
+    }
+
+    func bestMatchRank(for targets: [String]) -> Int {
+        targets.map { matchRank(for: $0) }.min() ?? Int.max
+    }
+
+    private var searchableValues: [String] {
+        ([resolvedTitle, guid] + participantLabels + participantHandles)
+            .map(\.collapsedWhitespace)
+            .filter { !$0.isEmpty }
+    }
+}
+#endif
+
 private struct AppleMessagesImportSchema {
     var messageColumns: Set<String>
     var chatMessageJoinColumns: Set<String>
+#if LOOP_INTERNAL_DIAGNOSTICS
+    var chatHandleJoinColumns: Set<String>
+#endif
     var attachmentColumns: Set<String>
 
     init(database: SQLiteReadOnlyDatabase) throws {
         self.messageColumns = try database.tableColumns("message")
         self.chatMessageJoinColumns = try database.tableColumns("message_attachment_join")
+#if LOOP_INTERNAL_DIAGNOSTICS
+        self.chatHandleJoinColumns = try database.tableColumns("chat_handle_join")
+#endif
         self.attachmentColumns = try database.tableColumns("attachment")
     }
 
@@ -390,10 +966,36 @@ private struct AppleMessagesImportSchema {
         canJoinAttachments ? "attachment_info.attachment_summary AS attachment_summary" : "NULL AS attachment_summary"
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
+    var chatHandleSelect: String {
+        canJoinChatHandles ? "group_concat(DISTINCT chat_handle.id) AS chat_handles" : "NULL AS chat_handles"
+    }
+
+    var chatHandleJoinSQL: String {
+        guard canJoinChatHandles else { return "" }
+        return """
+        LEFT JOIN chat_handle_join ON chat_handle_join.chat_id = chat.ROWID
+        LEFT JOIN handle AS chat_handle ON chat_handle.ROWID = chat_handle_join.handle_id
+        """
+    }
+#endif
+
     var attributedBodyHexSelect: String {
         messageColumns.contains("attributedBody")
             ? "hex(message.attributedBody) AS attributed_body_hex"
             : "NULL AS attributed_body_hex"
+    }
+
+    var payloadDataHexSelect: String {
+        messageColumns.contains("payload_data")
+            ? "hex(message.payload_data) AS payload_data_hex"
+            : "NULL AS payload_data_hex"
+    }
+
+    var messageSummaryInfoHexSelect: String {
+        messageColumns.contains("message_summary_info")
+            ? "hex(message.message_summary_info) AS message_summary_info_hex"
+            : "NULL AS message_summary_info_hex"
     }
 
     var attachmentJoinSQL: String {
@@ -442,6 +1044,13 @@ private struct AppleMessagesImportSchema {
             && !attachmentColumns.isEmpty
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
+    private var canJoinChatHandles: Bool {
+        chatHandleJoinColumns.contains("chat_id")
+            && chatHandleJoinColumns.contains("handle_id")
+    }
+#endif
+
     private var attachmentDetailExpression: String {
         let expressions = [
             attachmentColumns.contains("mime_type") ? "NULLIF(attachment.mime_type, '')" : nil,
@@ -469,19 +1078,35 @@ public enum AppleMessagesAttributedBodyDecoder {
     }
 
     public static func decodeText(from data: Data) -> String? {
-        if let attributed = decodeArchivedObject(from: data) as? NSAttributedString {
+        if let text = normalizedText(from: decodeKeyedArchivedObject(from: data)) {
+            return text
+        }
+        if let text = normalizedText(from: decodeLegacyArchivedObject(from: data)) {
+            return text
+        }
+        if let text = decodePropertyListText(from: data) {
+            return text
+        }
+        if let text = decodeEmbeddedPlainText(from: data) {
+            return text
+        }
+        return nil
+    }
+
+    private static func normalizedText(from object: Any?) -> String? {
+        if let attributed = object as? NSAttributedString {
             return attributed.string.collapsedWhitespace.nilIfEmpty
         }
-        if let string = decodeArchivedObject(from: data) as? String {
+        if let string = object as? String {
             return string.collapsedWhitespace.nilIfEmpty
         }
-        if let string = decodeArchivedObject(from: data) as? NSString {
+        if let string = object as? NSString {
             return (string as String).collapsedWhitespace.nilIfEmpty
         }
         return nil
     }
 
-    private static func decodeArchivedObject(from data: Data) -> Any? {
+    private static func decodeKeyedArchivedObject(from data: Data) -> Any? {
         do {
             let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
             unarchiver.requiresSecureCoding = false
@@ -490,6 +1115,220 @@ public enum AppleMessagesAttributedBodyDecoder {
         } catch {
             return nil
         }
+    }
+
+    private static func decodeLegacyArchivedObject(from data: Data) -> Any? {
+        guard data.starts(with: Data([0x04, 0x0b]) + Data("streamtyped".utf8)) else {
+            return nil
+        }
+        return NSUnarchiver.unarchiveObject(with: data)
+    }
+
+    private static func decodePropertyListText(from data: Data) -> String? {
+        guard data.starts(with: Data("bplist".utf8)) else {
+            return nil
+        }
+        guard let object = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) else {
+            return nil
+        }
+        return bestTextCandidate(from: plistStrings(in: object), minimumScore: 1)
+    }
+
+    private static func plistStrings(in object: Any) -> [String] {
+        if let string = object as? String {
+            return [string]
+        }
+        if let string = object as? NSString {
+            return [string as String]
+        }
+        if let array = object as? [Any] {
+            return array.flatMap(plistStrings)
+        }
+        if let dictionary = object as? [AnyHashable: Any] {
+            return dictionary.values.flatMap(plistStrings)
+        }
+        return []
+    }
+
+    private static func decodeEmbeddedPlainText(from data: Data) -> String? {
+        let candidates = utf8StringCandidates(from: data)
+            + utf16StringCandidates(from: data, encoding: .utf16LittleEndian)
+            + utf16StringCandidates(from: data, encoding: .utf16BigEndian)
+        return bestTextCandidate(from: candidates, minimumScore: 8)
+    }
+
+    private static func utf8StringCandidates(from data: Data) -> [String] {
+        var candidates: [String] = []
+        var buffer = Data()
+
+        func flush() {
+            guard buffer.count >= 2 else {
+                buffer.removeAll(keepingCapacity: true)
+                return
+            }
+            let decoded = String(decoding: buffer, as: UTF8.self)
+            candidates.append(contentsOf: decoded.components(separatedBy: "\u{FFFD}"))
+            buffer.removeAll(keepingCapacity: true)
+        }
+
+        for byte in data {
+            if byte == 0x09 || byte == 0x0a || byte == 0x0d || byte >= 0x20 {
+                buffer.append(byte)
+            } else {
+                flush()
+            }
+        }
+        flush()
+
+        return candidates
+    }
+
+    private static func utf16StringCandidates(from data: Data, encoding: String.Encoding) -> [String] {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 4 else { return [] }
+
+        var candidates: [String] = []
+        for alignment in 0...1 {
+            var start: Int?
+            var index = alignment
+
+            func flush(through end: Int) {
+                guard let rangeStart = start, end - rangeStart >= 4 else {
+                    start = nil
+                    return
+                }
+                let slice = Data(bytes[rangeStart..<end])
+                if let string = String(data: slice, encoding: encoding) {
+                    candidates.append(string)
+                }
+                start = nil
+            }
+
+            while index + 1 < bytes.count {
+                let codeUnit: UInt16
+                switch encoding {
+                case .utf16LittleEndian:
+                    codeUnit = UInt16(bytes[index]) | (UInt16(bytes[index + 1]) << 8)
+                default:
+                    codeUnit = (UInt16(bytes[index]) << 8) | UInt16(bytes[index + 1])
+                }
+
+                if isLikelyTextUTF16CodeUnit(codeUnit) {
+                    if start == nil {
+                        start = index
+                    }
+                } else {
+                    flush(through: index)
+                }
+                index += 2
+            }
+            flush(through: index)
+        }
+
+        return candidates
+    }
+
+    private static func isLikelyTextUTF16CodeUnit(_ value: UInt16) -> Bool {
+        value == 0x09
+            || value == 0x0a
+            || value == 0x0d
+            || (value >= 0x20 && value <= 0xfffd)
+    }
+
+    private static func bestTextCandidate(from strings: [String], minimumScore: Int) -> String? {
+        strings
+            .compactMap { textCandidate(from: $0) }
+            .filter { $0.score >= minimumScore }
+            .max { lhs, rhs in
+                lhs.score == rhs.score ? lhs.text.count < rhs.text.count : lhs.score < rhs.score
+            }?
+            .text
+    }
+
+    private static func textCandidate(from raw: String) -> (text: String, score: Int)? {
+        guard let text = raw.collapsedWhitespace.nilIfEmpty else {
+            return nil
+        }
+        guard text.count <= 4_000, containsHumanContent(text), !isArchiveMetadata(text) else {
+            return nil
+        }
+
+        var score = min(text.count, 120)
+        if text.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) }) {
+            score += 40
+        }
+        if text.rangeOfCharacter(from: CharacterSet(charactersIn: ".?!,;:")) != nil {
+            score += 20
+        }
+        if text.count <= 3 {
+            score -= 4
+        }
+        if looksLikeTechnicalIdentifier(text) {
+            score -= 60
+        }
+        return score > 0 ? (text, score) : nil
+    }
+
+    private static func containsHumanContent(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            scalar.properties.isAlphabetic
+                || scalar.properties.numericType != nil
+                || scalar.properties.isEmoji
+        }
+    }
+
+    private static func isArchiveMetadata(_ text: String) -> Bool {
+        let normalized = text.lowercased()
+        let exactMetadata: Set<String> = [
+            "$archiver",
+            "$class",
+            "$classes",
+            "$null",
+            "$objects",
+            "$top",
+            "ns.attributes",
+            "ns.keys",
+            "ns.objects",
+            "ns.string",
+            "nsattributeinfo",
+            "nsattributedstring",
+            "nscolor",
+            "nsfont",
+            "nsfontnameattributename",
+            "nsforegroundcolorattributename",
+            "nsmutableattributedstring",
+            "nsmutablestring",
+            "nsobject",
+            "nsparagraphstyle",
+            "nsstring",
+            "streamtyped"
+        ]
+        if exactMetadata.contains(normalized) {
+            return true
+        }
+        if normalized.hasPrefix("$") || normalized.hasPrefix("com.apple.") {
+            return true
+        }
+        if normalized.contains("streamtyped")
+            || normalized.contains("nskeyedarchive")
+            || normalized.contains("nsattributedstring")
+            || normalized.contains("immessagepart")
+        {
+            return true
+        }
+        return looksLikeTechnicalIdentifier(text) && text.count > 12
+    }
+
+    private static func looksLikeTechnicalIdentifier(_ text: String) -> Bool {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_.$"))
+        guard text.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return false
+        }
+        return text.hasPrefix("NS")
+            || text.hasPrefix("__")
+            || text.contains(".")
+            || text.contains("_")
+            || text.contains("$")
     }
 }
 

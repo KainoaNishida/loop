@@ -64,7 +64,9 @@ public final class MinderStore {
 
     public func eraseAllData() throws {
         try database.transaction {
+#if LOOP_INTERNAL_DIAGNOSTICS
             try database.execute("DELETE FROM gemini_diagnostic_runs")
+#endif
             try database.execute("DELETE FROM audit_events")
             try database.execute("DELETE FROM suggestions")
             try database.execute("DELETE FROM manual_queue_items")
@@ -565,6 +567,7 @@ public final class MinderStore {
             .map(auditEvent(from:))
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     public func saveGeminiDiagnosticRun(_ run: GeminiDiagnosticRun) throws {
         try database.execute(
             """
@@ -607,6 +610,7 @@ public final class MinderStore {
     public func clearGeminiDiagnosticRuns() throws {
         try database.execute("DELETE FROM gemini_diagnostic_runs")
     }
+#endif
 
     private func migrate() throws {
         try database.execute(
@@ -702,6 +706,7 @@ public final class MinderStore {
             """
         )
 
+#if LOOP_INTERNAL_DIAGNOSTICS
         try database.execute(
             """
             CREATE TABLE IF NOT EXISTS gemini_diagnostic_runs (
@@ -723,6 +728,7 @@ public final class MinderStore {
             )
             """
         )
+#endif
 
         try database.execute(
             """
@@ -1160,6 +1166,7 @@ private func auditEvent(from row: [String: String?]) throws -> AuditEvent {
     )
 }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
 private func geminiDiagnosticRun(from row: [String: String?]) throws -> GeminiDiagnosticRun {
     GeminiDiagnosticRun(
         id: try required(row, "id"),
@@ -1179,6 +1186,7 @@ private func geminiDiagnosticRun(from row: [String: String?]) throws -> GeminiDi
         detail: try required(row, "detail")
     )
 }
+#endif
 
 private func suggestionID(for draft: SuggestionDraft) -> String {
     let base = [

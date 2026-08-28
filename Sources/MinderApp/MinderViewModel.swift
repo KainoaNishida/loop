@@ -5,7 +5,10 @@ import MinderCore
 
 protocol AppleMessagesImporting {
     func importRecent(into store: MinderStore, since cutoff: Date) async throws -> ImportResult
+#if LOOP_INTERNAL_DIAGNOSTICS
     func textDiagnostics(since cutoff: Date) throws -> AppleMessagesTextDiagnostics
+    func decodeTrace(threadTitleMatches: [String], aliasesByTitle: [String: [String]], since cutoff: Date, limitPerThread: Int) throws -> AppleMessagesDecodeTraceReport
+#endif
 }
 
 extension AppleMessagesConversationImporter: AppleMessagesImporting {}
@@ -42,6 +45,15 @@ struct LoopSuggestionCard: Identifiable {
 
     var id: String {
         suggestion.id
+    }
+}
+
+struct LoopAlertLegendItem: Identifiable, Equatable {
+    var type: SuggestionType
+    var count: Int
+
+    var id: SuggestionType {
+        type
     }
 }
 
@@ -119,18 +131,26 @@ final class MinderViewModel: ObservableObject {
     @Published private(set) var suggestions: [Suggestion] = []
     @Published private(set) var suggestionCards: [LoopSuggestionCard] = []
     @Published private(set) var queueItems: [LoopQueueItem] = []
+    @Published private(set) var alertLegendItems: [LoopAlertLegendItem] = []
+    @Published private(set) var activeAlertCount = 0
+    @Published private(set) var queuePageIndex = 0
     @Published private(set) var manualItems: [ManualQueueItem] = []
     @Published private(set) var sources: [ConversationSource] = []
     @Published private(set) var threads: [ConversationThread] = []
     @Published private(set) var messages: [Message] = []
     @Published private(set) var auditEvents: [AuditEvent] = []
+#if LOOP_INTERNAL_DIAGNOSTICS
     @Published private(set) var geminiDiagnostics: [GeminiDiagnosticRun] = []
     @Published private(set) var appleMessagesTextDiagnostics: AppleMessagesTextDiagnostics?
+    @Published private(set) var appleMessagesDecodeTraceReport: AppleMessagesDecodeTraceReport?
+#endif
     @Published private(set) var profile: UserProfile?
     @Published private(set) var permissionHealth: [PermissionHealth] = []
     @Published private(set) var lastSyncAt: Date?
     @Published var selectedSuggestion: Suggestion?
+#if LOOP_INTERNAL_DIAGNOSTICS
     @Published var isShowingGeminiDiagnostics = false
+#endif
     @Published var isComposingManualItem = false
     @Published var manualDraftKind: ManualQueueItemKind = .todo
     @Published var manualDraftTitle = ""
@@ -147,6 +167,7 @@ final class MinderViewModel: ObservableObject {
     private let importer = ConversationImporter()
     private let messagesImporter: any AppleMessagesImporting
     private static let prototypeSourceKinds: Set<SourceKind> = [.appleMessages]
+    static let queuePageSize = 1
 
     init(
         store: MinderStore,
@@ -204,6 +225,33 @@ final class MinderViewModel: ObservableObject {
         activeSuggestions.count + activeManualItems.count
     }
 
+    var queuePageCount: Int {
+        guard activeQueueCount > 0 else { return 0 }
+        return (activeQueueCount + Self.queuePageSize - 1) / Self.queuePageSize
+    }
+
+    var queuePageNumber: Int {
+        activeQueueCount > 0 ? queuePageIndex + 1 : 0
+    }
+
+    var queuePageRangeText: String {
+        guard activeQueueCount > 0 else { return "0 items" }
+        let start = queuePageIndex * Self.queuePageSize + 1
+        let end = min(activeQueueCount, start + Self.queuePageSize - 1)
+        if start == end {
+            return "\(start) of \(activeQueueCount)"
+        }
+        return "\(start)-\(end) of \(activeQueueCount)"
+    }
+
+    var canGoToPreviousQueuePage: Bool {
+        queuePageIndex > 0
+    }
+
+    var canGoToNextQueuePage: Bool {
+        queuePageIndex < maxQueuePageIndex(forItemCount: activeQueueCount)
+    }
+
     var recentCompletedQueueItems: [LoopCompletedQueueItem] {
         let cutoff = Date().addingTimeInterval(-48 * 60 * 60)
         let completedSuggestions = recentCompletedSuggestions.map(LoopCompletedQueueItem.suggestion)
@@ -244,7 +292,9 @@ final class MinderViewModel: ObservableObject {
             suggestions = try store.fetchSuggestions(includeCompleted: true)
             manualItems = try store.fetchManualQueueItems(includeCompleted: true)
             auditEvents = try store.fetchAuditEvents(limit: 12)
+#if LOOP_INTERNAL_DIAGNOSTICS
             geminiDiagnostics = try store.fetchGeminiDiagnosticRuns(limit: 20)
+#endif
             permissionHealth = try store.fetchPermissionHealth()
             if
                 let selected = selectedSuggestion,
@@ -261,8 +311,7 @@ final class MinderViewModel: ObservableObject {
             if suggestions.isEmpty && statusMessage == "Ready." {
                 statusMessage = messages.isEmpty ? "Generate suggestions to check Messages." : "Generate suggestions from Messages."
             }
-            suggestionCards = try makeSuggestionCards(from: activeSuggestions)
-            queueItems = try makeQueueItems()
+            try refreshQueuePresentation()
         } catch {
             statusMessage = "Refresh failed: \(error.localizedDescription)"
         }
@@ -283,6 +332,10 @@ final class MinderViewModel: ObservableObject {
         selectedTab = .settings
     }
 
+    func toggleSettings() {
+        selectedTab = selectedTab == .settings ? .queue : .settings
+    }
+
     func openQueueWindow() {
         selectedTab = .queue
         showQueueWindow?()
@@ -292,6 +345,7 @@ final class MinderViewModel: ObservableObject {
         NSApp.terminate(nil)
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     func openGeminiDiagnostics() {
         refreshGeminiDiagnostics()
         isShowingGeminiDiagnostics = true
@@ -310,7 +364,22 @@ final class MinderViewModel: ObservableObject {
             let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86_400)
             let diagnostics = try self.messagesImporter.textDiagnostics(since: cutoff)
             self.appleMessagesTextDiagnostics = diagnostics
-            self.statusMessage = "Messages text check: \(diagnostics.outgoingWithoutPlainTextWithAttributedBody) sent rows can be recovered from attributed bodies; \(diagnostics.outgoingWithoutPlainText) sent rows have no plain text."
+            self.statusMessage = "Messages text check: \(diagnostics.recoveredOutgoingWithoutPlainTextCount) sent rows can be recovered; \(diagnostics.outgoingUnresolvedAfterDecode) sent rows still need another decoder."
+        }
+    }
+
+    func runAppleMessagesDecodeTrace() {
+        perform("Tracing Mom/Hunter Messages decoding...") {
+            let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86_400)
+            let targets = ["Mom", "Hunter", "ksm"]
+            let report = try self.messagesImporter.decodeTrace(
+                threadTitleMatches: targets,
+                aliasesByTitle: appleMessagesDecodeTraceAliases(for: targets, store: self.store),
+                since: cutoff,
+                limitPerThread: 12
+            )
+            self.appleMessagesDecodeTraceReport = report
+            self.statusMessage = "Messages decode trace: \(report.threadMatches.count) chat matches, \(report.outgoingRowCount) sent rows, \(report.placeholderRowCount) placeholders."
         }
     }
 
@@ -338,9 +407,12 @@ final class MinderViewModel: ObservableObject {
         perform("Clearing Gemini diagnostics...") {
             try self.store.clearGeminiDiagnosticRuns()
             self.geminiDiagnostics = []
-            self.statusMessage = "Cleared Gemini diagnostics. Messages, suggestions, profile, and permissions were left untouched."
+            self.appleMessagesTextDiagnostics = nil
+            self.appleMessagesDecodeTraceReport = nil
+            self.statusMessage = "Cleared diagnostics. Messages, suggestions, profile, and permissions were left untouched."
         }
     }
+#endif
 
     func buildMockInbox() {
         perform("Building mock inbox...") {
@@ -548,12 +620,27 @@ final class MinderViewModel: ObservableObject {
             expandedQueueItemID = itemID
         }
         do {
-            suggestionCards = try makeSuggestionCards(from: activeSuggestions)
-            queueItems = try makeQueueItems()
+            try refreshQueuePresentation()
         } catch {
             statusMessage = "Could not load conversation preview: \(error.localizedDescription)"
         }
         selectedSuggestion = card.suggestion
+    }
+
+    func goToFirstQueuePage() {
+        setQueuePage(0)
+    }
+
+    func goToPreviousQueuePage() {
+        setQueuePage(queuePageIndex - 1)
+    }
+
+    func goToNextQueuePage() {
+        setQueuePage(queuePageIndex + 1)
+    }
+
+    func goToLastQueuePage() {
+        setQueuePage(maxQueuePageIndex(forItemCount: activeQueueCount))
     }
 
     func update(_ suggestion: Suggestion, to state: SuggestionState) {
@@ -604,27 +691,66 @@ final class MinderViewModel: ObservableObject {
         return try await messagesImporter.importRecent(into: store, since: cutoff)
     }
 
-    private func makeSuggestionCards(from suggestions: [Suggestion], limit: Int = 6) throws -> [LoopSuggestionCard] {
-        try suggestions.prefix(limit).map { suggestion in
+    private func refreshQueuePresentation() throws {
+        let currentActiveSuggestions = activeSuggestions
+        activeAlertCount = currentActiveSuggestions.count
+        alertLegendItems = makeAlertLegendItems(from: currentActiveSuggestions)
+        let cards = try makeSuggestionCards(from: currentActiveSuggestions)
+        suggestionCards = cards
+        let allQueueItems = makeQueueItems(from: cards)
+        queuePageIndex = min(queuePageIndex, maxQueuePageIndex(forItemCount: allQueueItems.count))
+        queueItems = pageItems(from: allQueueItems)
+    }
+
+    private func makeSuggestionCards(from suggestions: [Suggestion]) throws -> [LoopSuggestionCard] {
+        try suggestions.map { suggestion in
             let itemID = "suggestion:\(suggestion.id)"
             let isExpanded = expandedQueueItemID == itemID
             return LoopSuggestionCard(
                 suggestion: suggestion,
-                recentMessages: isExpanded ? try store.fetchRecentMessages(threadId: suggestion.threadId, limit: 4) : [],
+                recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: isExpanded ? 6 : 3),
                 isExpanded: isExpanded
             )
         }
     }
 
-    private func makeQueueItems(limit: Int = 8) throws -> [LoopQueueItem] {
-        let suggestionItems = try makeSuggestionCards(from: activeSuggestions, limit: 6)
-            .map(LoopQueueItem.suggestion)
+    private func makeQueueItems(from suggestionCards: [LoopSuggestionCard]) -> [LoopQueueItem] {
+        let suggestionItems = suggestionCards.map(LoopQueueItem.suggestion)
         let manualItems = activeManualItems.map(LoopQueueItem.manual)
         let sorted = (suggestionItems + manualItems).sorted(by: isHigherPriorityQueueItem)
         if let expandedQueueItemID, !sorted.contains(where: { $0.id == expandedQueueItemID }) {
             self.expandedQueueItemID = nil
         }
-        return sorted.prefix(limit).map { $0 }
+        return sorted
+    }
+
+    private func setQueuePage(_ index: Int) {
+        queuePageIndex = max(0, min(index, maxQueuePageIndex(forItemCount: activeQueueCount)))
+        do {
+            try refreshQueuePresentation()
+        } catch {
+            statusMessage = "Could not change queue page: \(error.localizedDescription)"
+        }
+    }
+
+    private func pageItems(from items: [LoopQueueItem]) -> [LoopQueueItem] {
+        guard !items.isEmpty else { return [] }
+        let start = queuePageIndex * Self.queuePageSize
+        guard start < items.count else { return [] }
+        let end = min(items.count, start + Self.queuePageSize)
+        return Array(items[start..<end])
+    }
+
+    private func maxQueuePageIndex(forItemCount count: Int) -> Int {
+        count > 0 ? (count - 1) / Self.queuePageSize : 0
+    }
+
+    private func makeAlertLegendItems(from suggestions: [Suggestion]) -> [LoopAlertLegendItem] {
+        let countsByType = Dictionary(grouping: suggestions, by: \.type)
+            .mapValues(\.count)
+        return SuggestionType.allCases.map { type in
+            LoopAlertLegendItem(type: type, count: countsByType[type, default: 0])
+        }
     }
 
     private func generateStoredSuggestions() async throws -> (generated: SuggestionGenerationReport, mode: String, fallbackError: Error?) {
@@ -633,6 +759,7 @@ final class MinderViewModel: ObservableObject {
 
         guard profile?.cloudAIEnabled == true else {
             let report = try await localFallbackReport()
+#if LOOP_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config?.model ?? "Gemini",
                 start: Date(),
@@ -646,11 +773,13 @@ final class MinderViewModel: ObservableObject {
                 savedCount: report.savedCount,
                 detail: "Cloud AI is disabled; local ranking generated suggestions."
             )
+#endif
             return (report, SuggestionGenerationMode.localFallback.displayName, nil)
         }
 
         guard let config else {
             let report = try await localFallbackReport()
+#if LOOP_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: "Gemini",
                 start: Date(),
@@ -664,6 +793,7 @@ final class MinderViewModel: ObservableObject {
                 savedCount: report.savedCount,
                 detail: "Cloud AI is enabled but GEMINI_API_KEY is missing; local fallback generated suggestions."
             )
+#endif
             return (report, SuggestionGenerationMode.localFallback.displayName, GeminiDebugError.missingGeminiConfig)
         }
 
@@ -677,6 +807,7 @@ final class MinderViewModel: ObservableObject {
                 rankedDraftCount: 0,
                 savedSuggestions: saved
             )
+#if LOOP_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -690,6 +821,7 @@ final class MinderViewModel: ObservableObject {
                 savedCount: report.savedCount,
                 detail: "Local gates found no plausible candidate threads, so Gemini was not called."
             )
+#endif
             return (report, SuggestionGenerationMode.cloudAI.displayName, nil)
         }
 
@@ -705,6 +837,7 @@ final class MinderViewModel: ObservableObject {
                 rankedDraftCount: rankedDrafts.count,
                 savedSuggestions: saved
             )
+#if LOOP_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -718,10 +851,12 @@ final class MinderViewModel: ObservableObject {
                 savedCount: report.savedCount,
                 detail: "Gemini ranked candidate threads successfully."
             )
+#endif
             return (report, SuggestionGenerationMode.cloudAI.displayName, nil)
         } catch {
             let geminiDuration = max(0, Int(Date().timeIntervalSince(start) * 1000))
             let report = try await localFallbackReport()
+#if LOOP_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -736,6 +871,7 @@ final class MinderViewModel: ObservableObject {
                 savedCount: report.savedCount,
                 detail: redactedDiagnosticDetail(for: error)
             )
+#endif
             return (report, SuggestionGenerationMode.localFallback.displayName, error)
         }
     }
@@ -764,6 +900,7 @@ final class MinderViewModel: ObservableObject {
         return StoredRankingInputs(context: context, policy: policy, candidates: candidates)
     }
 
+#if LOOP_INTERNAL_DIAGNOSTICS
     private func latestGeminiDiagnosticRun() throws -> GeminiDiagnosticRun {
         if let latest = geminiDiagnostics.first {
             return latest
@@ -1043,6 +1180,7 @@ final class MinderViewModel: ObservableObject {
         detail: \(run.detail)
         """
     }
+#endif
 
     private func generationSummary(_ report: SuggestionGenerationReport, mode: String) -> String {
         "\(mode) read \(report.messageCount) messages, drafted \(report.rawDraftCount), judged \(report.decisionCount), ranked \(report.rankedDraftCount), saved \(report.savedCount) (\(report.activeSavedCount) active)"
@@ -1108,13 +1246,17 @@ private struct StoredRankingInputs {
 }
 
 private enum GeminiDebugError: Error, LocalizedError {
+#if LOOP_INTERNAL_DIAGNOSTICS
     case noDiagnostics
+#endif
     case missingGeminiConfig
 
     var errorDescription: String? {
         switch self {
+#if LOOP_INTERNAL_DIAGNOSTICS
         case .noDiagnostics:
             return "No Gemini diagnostics are available yet. Click Generate with Gemini enabled first."
+#endif
         case .missingGeminiConfig:
             return "GEMINI_API_KEY is missing."
         }
