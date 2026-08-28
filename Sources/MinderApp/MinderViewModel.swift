@@ -41,7 +41,6 @@ enum LoopMainTab: String, CaseIterable, Identifiable {
 struct LoopSuggestionCard: Identifiable {
     var suggestion: Suggestion
     var recentMessages: [Message] = []
-    var isExpanded: Bool = false
 
     var id: String {
         suggestion.id
@@ -152,10 +151,9 @@ final class MinderViewModel: ObservableObject {
     @Published var isShowingGeminiDiagnostics = false
 #endif
     @Published var isComposingManualItem = false
-    @Published var manualDraftKind: ManualQueueItemKind = .todo
+    @Published var manualDraftKind: ManualQueueItemKind = .note
     @Published var manualDraftTitle = ""
     @Published var manualDraftBody = ""
-    @Published var expandedQueueItemID: String?
     @Published var selectedTab: LoopMainTab = .queue
     @Published var statusMessage: String = "Ready."
     @Published var isWorking = false
@@ -168,6 +166,7 @@ final class MinderViewModel: ObservableObject {
     private let messagesImporter: any AppleMessagesImporting
     private static let prototypeSourceKinds: Set<SourceKind> = [.appleMessages]
     static let queuePageSize = 1
+    static let suggestionPreviewMessageLimit = 15
 
     init(
         store: MinderStore,
@@ -571,7 +570,7 @@ final class MinderViewModel: ObservableObject {
         }
     }
 
-    func beginManualItem(kind: ManualQueueItemKind = .todo) {
+    func beginManualItem(kind: ManualQueueItemKind = .note) {
         manualDraftKind = kind
         manualDraftTitle = ""
         manualDraftBody = ""
@@ -601,30 +600,15 @@ final class MinderViewModel: ObservableObject {
                 body: body
             )
             isComposingManualItem = false
-            manualDraftKind = .todo
+            manualDraftKind = .note
             manualDraftTitle = ""
             manualDraftBody = ""
+            queuePageIndex = 0
             statusMessage = "Added \(item.kind.displayName.lowercased())."
             refresh()
         } catch {
             statusMessage = "Could not save item: \(error.localizedDescription)"
         }
-    }
-
-    func toggleExpanded(_ item: LoopQueueItem) {
-        guard case .suggestion(let card) = item else { return }
-        let itemID = item.id
-        if expandedQueueItemID == itemID {
-            expandedQueueItemID = nil
-        } else {
-            expandedQueueItemID = itemID
-        }
-        do {
-            try refreshQueuePresentation()
-        } catch {
-            statusMessage = "Could not load conversation preview: \(error.localizedDescription)"
-        }
-        selectedSuggestion = card.suggestion
     }
 
     func goToFirstQueuePage() {
@@ -704,12 +688,9 @@ final class MinderViewModel: ObservableObject {
 
     private func makeSuggestionCards(from suggestions: [Suggestion]) throws -> [LoopSuggestionCard] {
         try suggestions.map { suggestion in
-            let itemID = "suggestion:\(suggestion.id)"
-            let isExpanded = expandedQueueItemID == itemID
             return LoopSuggestionCard(
                 suggestion: suggestion,
-                recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: isExpanded ? 6 : 3),
-                isExpanded: isExpanded
+                recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: Self.suggestionPreviewMessageLimit)
             )
         }
     }
@@ -717,11 +698,7 @@ final class MinderViewModel: ObservableObject {
     private func makeQueueItems(from suggestionCards: [LoopSuggestionCard]) -> [LoopQueueItem] {
         let suggestionItems = suggestionCards.map(LoopQueueItem.suggestion)
         let manualItems = activeManualItems.map(LoopQueueItem.manual)
-        let sorted = (suggestionItems + manualItems).sorted(by: isHigherPriorityQueueItem)
-        if let expandedQueueItemID, !sorted.contains(where: { $0.id == expandedQueueItemID }) {
-            self.expandedQueueItemID = nil
-        }
-        return sorted
+        return (suggestionItems + manualItems).sorted(by: isHigherPriorityQueueItem)
     }
 
     private func setQueuePage(_ index: Int) {
@@ -1206,15 +1183,19 @@ final class MinderViewModel: ObservableObject {
     }
 
     private func isHigherPriorityQueueItem(_ lhs: LoopQueueItem, than rhs: LoopQueueItem) -> Bool {
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+
         switch (lhs, rhs) {
         case (.suggestion(let left), .suggestion(let right)):
             return isHigherPriorityAlert(left.suggestion, than: right.suggestion)
         case (.suggestion, .manual):
-            return true
-        case (.manual, .suggestion):
             return false
+        case (.manual, .suggestion):
+            return true
         case (.manual(let left), .manual(let right)):
-            return left.updatedAt > right.updatedAt
+            return left.id < right.id
         }
     }
 

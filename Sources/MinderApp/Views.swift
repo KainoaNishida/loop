@@ -56,7 +56,7 @@ struct InboxView: View {
                 footer
             }
         }
-        .frame(minWidth: 720, idealWidth: 760, minHeight: 720, idealHeight: 820)
+        .frame(minWidth: 720, idealWidth: 760, minHeight: 0, idealHeight: 520)
         .background(LoopTheme.pageFill)
     }
 
@@ -76,15 +76,7 @@ struct InboxView: View {
                     Text("Loop")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(LoopTheme.text)
-                    Text(headerSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(LoopTheme.secondaryText)
-                        .lineLimit(1)
                 }
-            }
-
-            if model.selectedTab == .queue {
-                QueueCountBadge(count: model.activeQueueCount)
             }
 
             Spacer()
@@ -97,11 +89,11 @@ struct InboxView: View {
                     }
 
                     Button {
-                        model.beginManualItem()
+                        model.beginManualItem(kind: .note)
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .help("Add note or to-do")
+                    .help("Add note")
 
                     Button {
                         model.generateSuggestions()
@@ -136,16 +128,6 @@ struct InboxView: View {
         .background(LoopTheme.headerFill)
     }
 
-    private var headerSubtitle: String {
-        switch model.selectedTab {
-        case .queue:
-            guard model.activeQueueCount > 0 else { return "All caught up" }
-            return "Personal queue"
-        case .settings:
-            return "Settings"
-        }
-    }
-
     @ViewBuilder
     private var content: some View {
         switch model.selectedTab {
@@ -158,13 +140,6 @@ struct InboxView: View {
 
     private var queue: some View {
         VStack(spacing: 0) {
-            QueuePagerBar(
-                pageNumber: model.queuePageNumber,
-                pageCount: model.queuePageCount
-            )
-
-            Divider()
-
             HStack(alignment: .center, spacing: 10) {
                 QueueArrowButton(
                     systemImage: "chevron.left",
@@ -186,7 +161,6 @@ struct InboxView: View {
                             case .suggestion(let card):
                                 LoopSuggestionCardView(
                                     card: card,
-                                    toggleExpanded: { model.toggleExpanded(item) },
                                     complete: { model.complete(card.suggestion) }
                                 )
                             case .manual(let manualItem):
@@ -196,10 +170,8 @@ struct InboxView: View {
                             }
                         }
                     }
-
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
 
                 QueueArrowButton(
                     systemImage: "chevron.right",
@@ -209,7 +181,7 @@ struct InboxView: View {
                 )
             }
             .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(LoopTheme.pageFill)
     }
@@ -223,11 +195,12 @@ struct InboxView: View {
 
             Spacer()
 
-            Text(model.statusMessage)
-                .font(.caption)
-                .foregroundStyle(LoopTheme.secondaryText)
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
+            if model.queuePageCount > 0 {
+                QueueFooterPageIndicator(
+                    pageNumber: model.queuePageNumber,
+                    pageCount: model.queuePageCount
+                )
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -242,54 +215,23 @@ struct InboxView: View {
     }
 }
 
-private struct QueuePagerBar: View {
+private struct QueueFooterPageIndicator: View {
     var pageNumber: Int
     var pageCount: Int
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Label("Active Queue", systemImage: "tray.full")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(LoopTheme.text)
-                Text(queueStatusText)
-                    .font(.caption)
-                    .foregroundStyle(LoopTheme.secondaryText)
-            }
-
-            Spacer()
-
-            StatusPill(text: pageText, systemImage: pageCount == 0 ? "checkmark.circle" : "rectangle.stack", tint: pageCount == 0 ? LoopTheme.green : LoopTheme.blue)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(LoopTheme.elevatedFill)
-    }
-
-    private var pageText: String {
-        pageCount == 0 ? "Clear" : "\(pageNumber) of \(pageCount)"
-    }
-
-    private var queueStatusText: String {
-        pageCount == 0 ? "Nothing needs attention right now." : "Focused review"
-    }
-}
-
-private struct QueueCountBadge: View {
-    var count: Int
-
-    var body: some View {
-        Label(countText, systemImage: count == 0 ? "checkmark.circle.fill" : "circle.fill")
+        Label("\(pageNumber)/\(pageCount)", systemImage: "rectangle.stack")
             .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(count == 0 ? LoopTheme.green : LoopTheme.blue)
+            .foregroundStyle(LoopTheme.secondaryText)
             .lineLimit(1)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background((count == 0 ? LoopTheme.green : LoopTheme.blue).opacity(0.12), in: Capsule())
-    }
-
-    private var countText: String {
-        count == 1 ? "1 active" : "\(count) active"
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(LoopTheme.separator.opacity(0.6), lineWidth: 1)
+            }
+            .help("Queue page")
     }
 }
 
@@ -323,50 +265,14 @@ private struct QueueArrowButton: View {
 
 private struct LoopSuggestionCardView: View {
     var card: LoopSuggestionCard
-    var toggleExpanded: () -> Void
     var complete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: card.suggestion.type.systemImage)
-                            .font(.caption.weight(.bold))
-                        Text(card.suggestion.type.displayName)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(card.suggestion.type.tint)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(card.suggestion.type.tint.opacity(0.12), in: Capsule())
-
-                    Text(card.suggestion.evidence.threadTitle)
-                        .font(.headline)
-                        .foregroundStyle(LoopTheme.text)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text(card.suggestion.evidence.sourceTimestamp.detailLabel)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(LoopTheme.secondaryText)
-                        .lineLimit(1)
-
-                    Button {
-                        complete()
-                    } label: {
-                        Label("Complete", systemImage: "checkmark")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(card.suggestion.type.tint)
-                    .controlSize(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .disabled(card.suggestion.state == .completed)
-                }
-            }
+            Text(card.suggestion.evidence.threadTitle)
+                .font(.headline)
+                .foregroundStyle(LoopTheme.text)
+                .lineLimit(1)
 
             Text(card.suggestion.title)
                 .font(.callout.weight(.semibold))
@@ -383,17 +289,19 @@ private struct LoopSuggestionCardView: View {
             ConversationPreview(messages: card.recentMessages)
                 .transition(.opacity.combined(with: .move(edge: .top)))
 
-            Button(action: toggleExpanded) {
-                HStack(spacing: 6) {
-                    Image(systemName: card.isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                    Text(card.isExpanded ? "Show less" : "Show more")
-                        .font(.caption.weight(.medium))
+            HStack {
+                Spacer()
+                Button {
+                    complete()
+                } label: {
+                    Label("Mark as Done", systemImage: "checkmark")
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(card.suggestion.type.tint)
+                .controlSize(.small)
+                .fixedSize(horizontal: true, vertical: false)
+                .disabled(card.suggestion.state == .completed)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(LoopTheme.blue)
-            .help(card.isExpanded ? "Show fewer messages" : "Show more messages")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -412,44 +320,10 @@ private struct ManualQueueItemCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: item.kind.systemImage)
-                            .font(.caption.weight(.bold))
-                        Text(item.kind.displayName)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(item.kind.tint)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(item.kind.tint.opacity(0.12), in: Capsule())
-
-                    Text(item.title)
-                        .font(.headline)
-                        .foregroundStyle(LoopTheme.text)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text(item.createdAt.detailLabel)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(LoopTheme.secondaryText)
-                        .lineLimit(1)
-
-                    Button {
-                        complete()
-                    } label: {
-                        Label("Complete", systemImage: "checkmark")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(item.kind.tint)
-                    .controlSize(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-            }
+            Text(item.title)
+                .font(.headline)
+                .foregroundStyle(LoopTheme.text)
+                .lineLimit(2)
 
             if let body = item.body {
                 Text(body)
@@ -457,6 +331,19 @@ private struct ManualQueueItemCardView: View {
                     .foregroundStyle(LoopTheme.secondaryText)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    complete()
+                } label: {
+                    Label("Mark as Done", systemImage: "checkmark")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(item.kind.tint)
+                .controlSize(.small)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
         .padding(16)
@@ -472,9 +359,9 @@ private struct ManualQueueItemCardView: View {
 
 private struct ManualQueueComposerView: View {
     @ObservedObject var model: MinderViewModel
-    @State private var draftKind: ManualQueueItemKind = .todo
     @State private var draftTitle = ""
     @State private var draftBody = ""
+    @FocusState private var isBodyFocused: Bool
 
     private var canSave: Bool {
         !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -483,13 +370,9 @@ private struct ManualQueueComposerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Picker("Kind", selection: $draftKind) {
-                    ForEach(ManualQueueItemKind.allCases, id: \.self) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 160)
+                Label("New Note", systemImage: "note.text")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(LoopTheme.text)
 
                 Spacer()
 
@@ -498,8 +381,8 @@ private struct ManualQueueComposerView: View {
                 }
                 .controlSize(.small)
 
-                Button("Save") {
-                    model.saveManualItem(kind: draftKind, title: draftTitle, body: draftBody)
+                Button("Save Note") {
+                    model.saveManualItem(kind: .note, title: draftTitle, body: draftBody)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(LoopTheme.blue)
@@ -507,24 +390,36 @@ private struct ManualQueueComposerView: View {
                 .disabled(!canSave || model.isWorking)
             }
 
-            TextField("Title", text: $draftTitle)
+            TextField("Note title", text: $draftTitle)
                 .textFieldStyle(.roundedBorder)
 
-            TextEditor(text: $draftBody)
-                .font(.body)
-                .frame(minHeight: 72, maxHeight: 112)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(alignment: .topLeading) {
-                    if draftBody.isEmpty {
-                        Text("Notes")
-                            .foregroundStyle(LoopTheme.tertiaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 14)
-                            .allowsHitTesting(false)
-                    }
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $draftBody)
+                    .font(.body)
+                    .focused($isBodyFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 4)
+
+                if draftBody.isEmpty {
+                    Text("Details")
+                        .font(.body)
+                        .foregroundStyle(LoopTheme.tertiaryText)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
                 }
+            }
+            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 112)
+            .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(LoopTheme.separator.opacity(0.65), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .onTapGesture {
+                isBodyFocused = true
+            }
         }
         .padding(12)
         .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
@@ -533,7 +428,6 @@ private struct ManualQueueComposerView: View {
                 .stroke(LoopTheme.blue.opacity(0.25), lineWidth: 1)
         }
         .onAppear {
-            draftKind = model.manualDraftKind
             draftTitle = model.manualDraftTitle
             draftBody = model.manualDraftBody
         }
@@ -588,20 +482,52 @@ private struct ConversationPreview: View {
     var messages: [Message]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Group {
             if messages.isEmpty {
-                Text("No recent messages available.")
-                    .font(.caption)
-                    .foregroundStyle(LoopTheme.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
+                emptyState
             } else {
-                ForEach(messages) { message in
-                    MessageBubbleRow(message: message)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(messages) { message in
+                                MessageBubbleRow(message: message)
+                                    .id(message.id)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 260)
+                    .background(LoopTheme.secondaryFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(LoopTheme.separator.opacity(0.65), lineWidth: 1)
+                    }
+                    .onAppear {
+                        scrollToLatestMessage(with: proxy)
+                    }
+                    .onChange(of: messages.map(\.id)) { _, _ in
+                        scrollToLatestMessage(with: proxy)
+                    }
                 }
             }
         }
         .padding(.top, 2)
+    }
+
+    private var emptyState: some View {
+        Text("No recent messages available.")
+            .font(.caption)
+            .foregroundStyle(LoopTheme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
+    }
+
+    private func scrollToLatestMessage(with proxy: ScrollViewProxy) {
+        guard let latestMessageID = messages.last?.id else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(latestMessageID, anchor: .bottom)
+        }
     }
 }
 
@@ -609,17 +535,29 @@ private struct MessageBubbleRow: View {
     var message: Message
 
     var body: some View {
+        let content = MessageBubbleContent(body: message.body)
+
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 3) {
             HStack {
                 if message.isFromUser { Spacer(minLength: 64) }
-                Text(message.body.isEmpty ? "Attachment" : message.body)
+
+                HStack(alignment: .top, spacing: 6) {
+                    if let systemImage = content.systemImage {
+                        Image(systemName: systemImage)
+                            .font(.caption.weight(.semibold))
+                            .padding(.top, 1)
+                    }
+                    Text(content.text)
+                        .font(.caption)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                     .font(.caption)
-                    .foregroundStyle(message.isFromUser ? .white : LoopTheme.text)
-                    .lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(foregroundStyle(for: content))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(message.isFromUser ? LoopTheme.outgoingBubble : LoopTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
+
                 if !message.isFromUser { Spacer(minLength: 64) }
             }
 
@@ -627,6 +565,61 @@ private struct MessageBubbleRow: View {
                 .font(.caption2)
                 .foregroundStyle(LoopTheme.tertiaryText)
                 .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
+    }
+
+    private func foregroundStyle(for content: MessageBubbleContent) -> Color {
+        if message.isFromUser {
+            return .white
+        }
+        return content.isPlaceholder ? LoopTheme.secondaryText : LoopTheme.text
+    }
+}
+
+private struct MessageBubbleContent {
+    var text: String
+    var systemImage: String?
+    var isPlaceholder: Bool
+
+    init(body: String) {
+        let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedBody.isEmpty else {
+            text = "Attachment"
+            systemImage = "paperclip"
+            isPlaceholder = true
+            return
+        }
+
+        let lowercasedBody = normalizedBody.lowercased()
+        if lowercasedBody == "image attachment" {
+            text = "Image attachment"
+            systemImage = "photo"
+            isPlaceholder = true
+        } else if lowercasedBody == "video attachment" {
+            text = "Video attachment"
+            systemImage = "video"
+            isPlaceholder = true
+        } else if lowercasedBody == "audio message" {
+            text = "Audio message"
+            systemImage = "waveform"
+            isPlaceholder = true
+        } else if lowercasedBody == "file attachment" {
+            text = "File attachment"
+            systemImage = "doc"
+            isPlaceholder = true
+        } else if lowercasedBody == "message without plain text" {
+            text = "Message without plain text"
+            systemImage = "bubble.left"
+            isPlaceholder = true
+        } else if lowercasedBody == "sent reply without plain text" || lowercasedBody == "[sent reply without plain text]" {
+            text = "Sent reply without plain text"
+            systemImage = "arrowshape.turn.up.left"
+            isPlaceholder = true
+        } else {
+            text = normalizedBody
+            systemImage = nil
+            isPlaceholder = false
         }
     }
 }
@@ -661,7 +654,7 @@ struct EmptyStateView: View {
         }
         .padding(.vertical, 52)
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
         .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -1319,7 +1312,7 @@ struct SuggestionDetailView: View {
                 Button {
                     model.complete(suggestion)
                 } label: {
-                    Label("Mark Completed", systemImage: "checkmark.circle")
+                    Label("Mark as Done", systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

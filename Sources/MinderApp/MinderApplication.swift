@@ -6,6 +6,19 @@ import MinderCore
 final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Sendable {
     private static var retainedDelegate: MinderApplication?
     private static let backgroundSyncInterval: TimeInterval = 15 * 60
+    private static let popoverWidth: CGFloat = 760
+    private static let minQueuePopoverHeight: CGFloat = 360
+    private static let maxQueuePopoverHeight: CGFloat = 620
+    private static let queueChromeHeight: CGFloat = 138
+    private static let emptyQueueCardHeight: CGFloat = 250
+    private static let composerEstimatedHeight: CGFloat = 186
+    private static let manualCardEstimatedHeight: CGFloat = 150
+    private static let suggestionCardBaseHeight: CGFloat = 176
+    private static let messagePreviewMinHeight: CGFloat = 54
+    private static let messagePreviewMaxHeight: CGFloat = 260
+    private static let messagePreviewRowEstimate: CGFloat = 38
+    private static let stackedQueueItemSpacing: CGFloat = 12
+    private static let settingsPopoverHeight: CGFloat = 680
 
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
@@ -15,7 +28,9 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private var permissionService: MacPermissionService?
     private var settingsViewModel: OnboardingViewModel?
     private var queueWindow: NSWindow?
-    private var alertCountCancellable: AnyCancellable?
+    private var selectedTabCancellable: AnyCancellable?
+    private var queueItemsCancellable: AnyCancellable?
+    private var queueComposerCancellable: AnyCancellable?
 
     static func main() {
         let app = NSApplication.shared
@@ -56,7 +71,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
 
             let popover = NSPopover()
             popover.behavior = .transient
-            popover.contentSize = NSSize(width: 760, height: 820)
+            popover.contentSize = popoverContentSize(for: model)
             popover.contentViewController = NSHostingController(rootView: InboxView(model: model, settingsModel: settingsModel))
             self.popover = popover
 
@@ -65,11 +80,27 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
             statusItem.button?.target = self
             statusItem.button?.action = #selector(togglePopover)
             self.statusItem = statusItem
-            updateStatusItemTitle(alertCount: model.activeAlertCount)
-            alertCountCancellable = model.$activeAlertCount
+            updateStatusItemTitle()
+            selectedTabCancellable = model.$selectedTab
                 .receive(on: RunLoop.main)
-                .sink { [weak self] count in
-                    self?.updateStatusItemTitle(alertCount: count)
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        self?.updatePopoverContentSize()
+                    }
+                }
+            queueItemsCancellable = model.$queueItems
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        self?.updatePopoverContentSize()
+                    }
+                }
+            queueComposerCancellable = model.$isComposingManualItem
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        self?.updatePopoverContentSize()
+                    }
                 }
 
             model.refresh()
@@ -99,23 +130,71 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     @MainActor
     private func showPopover() {
         guard let button = statusItem?.button, let popover else { return }
+        updatePopoverContentSize()
         if !popover.isShown {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func updateStatusItemTitle(alertCount: Int) {
-        let countLabel: String
-        if alertCount <= 0 {
-            countLabel = ""
-        } else if alertCount > 99 {
-            countLabel = " 99+"
-        } else {
-            countLabel = " \(alertCount)"
+    @MainActor
+    private func updatePopoverContentSize() {
+        guard let popover, let viewModel else { return }
+        popover.contentSize = popoverContentSize(for: viewModel)
+    }
+
+    @MainActor
+    private func popoverContentSize(for model: MinderViewModel) -> NSSize {
+        let requestedHeight: CGFloat
+        switch model.selectedTab {
+        case .queue:
+            requestedHeight = queuePopoverHeight(for: model)
+        case .settings:
+            requestedHeight = Self.settingsPopoverHeight
         }
-        statusItem?.button?.title = " Loop\(countLabel)"
-        statusItem?.button?.toolTip = alertCount == 1 ? "Loop: 1 active alert" : "Loop: \(alertCount) active alerts"
+
+        let visibleHeight = NSScreen.main?.visibleFrame.height ?? requestedHeight
+        let cappedHeight = min(requestedHeight, max(420, visibleHeight - 96))
+        return NSSize(width: Self.popoverWidth, height: cappedHeight)
+    }
+
+    @MainActor
+    private func queuePopoverHeight(for model: MinderViewModel) -> CGFloat {
+        var contentHeight: CGFloat = 0
+
+        if model.isComposingManualItem {
+            contentHeight += Self.composerEstimatedHeight
+        }
+
+        if let queueItem = model.queueItems.first {
+            if contentHeight > 0 {
+                contentHeight += Self.stackedQueueItemSpacing
+            }
+            contentHeight += estimatedHeight(for: queueItem)
+        } else if !model.isComposingManualItem {
+            contentHeight += Self.emptyQueueCardHeight
+        }
+
+        let requestedHeight = Self.queueChromeHeight + contentHeight
+        return min(Self.maxQueuePopoverHeight, max(Self.minQueuePopoverHeight, requestedHeight))
+    }
+
+    private func estimatedHeight(for item: LoopQueueItem) -> CGFloat {
+        switch item {
+        case .manual(let manualItem):
+            return Self.manualCardEstimatedHeight + (manualItem.body == nil ? 0 : 34)
+        case .suggestion(let card):
+            let previewHeight = min(
+                Self.messagePreviewMaxHeight,
+                max(Self.messagePreviewMinHeight, CGFloat(card.recentMessages.count) * Self.messagePreviewRowEstimate + 20)
+            )
+            return Self.suggestionCardBaseHeight + previewHeight
+        }
+    }
+
+    private func updateStatusItemTitle() {
+        statusItem?.button?.title = " Loop"
+        statusItem?.button?.toolTip = "Open Loop"
     }
 
     @MainActor

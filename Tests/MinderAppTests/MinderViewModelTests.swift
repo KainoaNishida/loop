@@ -28,7 +28,7 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(model.selectedTab, .queue)
     }
 
-    func testQueuePresentationIncludesSuggestionsAndManualItems() throws {
+    func testQueuePresentationRanksNewestManualNotesAheadOfSuggestions() throws {
         let store = try makeStore()
         try saveMessagesImport(
             store: store,
@@ -39,24 +39,31 @@ final class MinderViewModelTests: XCTestCase {
         _ = try store.upsertSuggestions([
             testDraft(messageId: "message-apple-ask")
         ])
-        let manualItem = try store.createManualQueueItem(kind: .todo, title: "Buy coffee")
+        let manualItem = ManualQueueItem(
+            id: "manual-note-front",
+            kind: .note,
+            title: "Buy coffee",
+            createdAt: Date(timeIntervalSince1970: 1_900_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_900_000_000)
+        )
+        try store.upsertManualQueueItem(manualItem)
 
         let model = makeModel(store: store)
         model.refresh()
 
         XCTAssertEqual(model.activeQueueCount, 2)
         XCTAssertEqual(model.queueItems.count, 1)
-        guard case .suggestion(let card) = try XCTUnwrap(model.queueItems.first) else {
-            return XCTFail("Expected the generated suggestion to rank before manual items.")
+        guard case .manual(let queuedManualItem) = try XCTUnwrap(model.queueItems.first) else {
+            return XCTFail("Expected newest manual note to appear first.")
         }
-        XCTAssertEqual(card.recentMessages.map(\.externalId), ["ask"])
+        XCTAssertEqual(queuedManualItem.id, manualItem.id)
 
         model.goToNextQueuePage()
 
-        guard case .manual(let queuedManualItem) = try XCTUnwrap(model.queueItems.first) else {
-            return XCTFail("Expected manual item in mixed queue.")
+        guard case .suggestion(let card) = try XCTUnwrap(model.queueItems.first) else {
+            return XCTFail("Expected generated suggestion after newer manual note.")
         }
-        XCTAssertEqual(queuedManualItem.id, manualItem.id)
+        XCTAssertEqual(card.recentMessages.map(\.externalId), ["ask"])
     }
 
     func testQueuePresentationPaginatesActiveItems() throws {
@@ -145,18 +152,33 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(restored.state, .active)
     }
 
-    func testSavingManualNoteThroughViewModelPersistsAndClearsComposer() throws {
+    func testSavingManualNoteThroughViewModelPersistsClearsComposerAndJumpsToFront() throws {
         let store = try makeStore()
+        let baseDate = Date().addingTimeInterval(-10_000)
+        for index in 1...3 {
+            try store.upsertManualQueueItem(ManualQueueItem(
+                id: "older-note-\(index)",
+                kind: .note,
+                title: "Older note \(index)",
+                createdAt: baseDate.addingTimeInterval(TimeInterval(index)),
+                updatedAt: baseDate.addingTimeInterval(TimeInterval(index))
+            ))
+        }
         let model = makeModel(store: store)
+        model.refresh()
+        model.goToLastQueuePage()
+        XCTAssertEqual(model.queuePageIndex, 2)
 
-        model.beginManualItem(kind: .note)
+        model.beginManualItem()
+        XCTAssertEqual(model.manualDraftKind, .note)
         model.saveManualItem(kind: .note, title: "  Launch checklist  ", body: "  Confirm tester notes work.  ")
 
         XCTAssertFalse(model.isComposingManualItem)
         XCTAssertFalse(model.isWorking)
-        XCTAssertEqual(model.manualDraftKind, .todo)
+        XCTAssertEqual(model.manualDraftKind, .note)
         XCTAssertEqual(model.manualDraftTitle, "")
         XCTAssertEqual(model.manualDraftBody, "")
+        XCTAssertEqual(model.queuePageIndex, 0)
 
         let saved = try XCTUnwrap(try store.fetchManualQueueItems().first)
         XCTAssertEqual(saved.kind, .note)
@@ -282,42 +304,36 @@ final class MinderViewModelTests: XCTestCase {
     }
 #endif
 
-    func testSuggestionMessagesLoadByDefaultAndExpandForMoreHistory() throws {
+    func testSuggestionMessagesLoadScrollableRecentWindowByDefault() throws {
         let store = try makeStore()
+        let baseDate = Date(timeIntervalSince1970: 1_800_000_000 - 1_000)
         try saveMessagesImport(
             store: store,
-            messages: [
-                testMessage(id: "m1", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 600), body: "First older message.", isFromUser: false),
-                testMessage(id: "m2", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 500), body: "Second older message.", isFromUser: true),
-                testMessage(id: "m3", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 400), body: "Third older message.", isFromUser: false),
-                testMessage(id: "m4", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 300), body: "Fourth recent message.", isFromUser: true),
-                testMessage(id: "m5", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 200), body: "Fifth recent message.", isFromUser: false),
-                testMessage(id: "m6", sentAt: Date(timeIntervalSince1970: 1_800_000_000 - 100), body: "Sixth recent message.", isFromUser: true)
-            ]
+            messages: (1...18).map { index in
+                testMessage(
+                    id: "m\(index)",
+                    sentAt: baseDate.addingTimeInterval(TimeInterval(index)),
+                    body: "Message \(index)",
+                    isFromUser: index.isMultiple(of: 2)
+                )
+            }
         )
         _ = try store.upsertSuggestions([
-            testDraft(messageId: "message-apple-m6")
+            testDraft(messageId: "message-apple-m18")
         ])
 
         let model = makeModel(store: store)
         model.refresh()
 
+        let expectedMessageIDs = (4...18).map { "m\($0)" }
         XCTAssertEqual(model.suggestionCards.count, 1)
-        XCTAssertEqual(try XCTUnwrap(model.suggestionCards.first).recentMessages.map(\.externalId), ["m4", "m5", "m6"])
+        XCTAssertEqual(try XCTUnwrap(model.suggestionCards.first).recentMessages.map(\.externalId), expectedMessageIDs)
         let queueItem = try XCTUnwrap(model.queueItems.first)
-        guard case .suggestion(let collapsedCard) = queueItem else {
+        guard case .suggestion(let card) = queueItem else {
             return XCTFail("Expected suggestion queue item.")
         }
-        XCTAssertFalse(collapsedCard.isExpanded)
-        XCTAssertEqual(collapsedCard.recentMessages.map(\.externalId), ["m4", "m5", "m6"])
-
-        model.toggleExpanded(queueItem)
-
-        guard case .suggestion(let expandedCard) = try XCTUnwrap(model.queueItems.first) else {
-            return XCTFail("Expected expanded suggestion queue item.")
-        }
-        XCTAssertTrue(expandedCard.isExpanded)
-        XCTAssertEqual(expandedCard.recentMessages.map(\.externalId), ["m1", "m2", "m3", "m4", "m5", "m6"])
+        XCTAssertEqual(card.recentMessages.count, MinderViewModel.suggestionPreviewMessageLimit)
+        XCTAssertEqual(card.recentMessages.map(\.externalId), expectedMessageIDs)
     }
 
     func testActiveAlertCountExcludesManualAndInactiveSuggestions() throws {
