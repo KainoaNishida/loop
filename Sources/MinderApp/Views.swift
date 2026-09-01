@@ -42,6 +42,10 @@ private enum LoopTheme {
     }
 }
 
+private enum LoopQueueLayout {
+    static let cardHeight: CGFloat = 420
+}
+
 struct InboxView: View {
     @ObservedObject var model: MinderViewModel
     @ObservedObject var settingsModel: OnboardingViewModel
@@ -51,12 +55,13 @@ struct InboxView: View {
             header
             Divider()
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             if model.selectedTab == .queue {
                 Divider()
                 footer
             }
         }
-        .frame(minWidth: 720, idealWidth: 760, minHeight: 0, idealHeight: 520)
+        .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: 0, idealHeight: 620, maxHeight: .infinity)
         .background(LoopTheme.pageFill)
     }
 
@@ -139,50 +144,48 @@ struct InboxView: View {
     }
 
     private var queue: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                QueueArrowButton(
-                    systemImage: "chevron.left",
-                    help: "Previous queue item",
-                    isEnabled: model.canGoToPreviousQueuePage,
-                    action: { model.goToPreviousQueuePage() }
-                )
+        HStack(alignment: .center, spacing: 10) {
+            QueueArrowButton(
+                systemImage: "chevron.left",
+                help: "Previous queue item",
+                isEnabled: model.canGoToPreviousQueuePage,
+                action: { model.goToPreviousQueuePage() }
+            )
 
-                VStack(alignment: .leading, spacing: 12) {
-                    if model.isComposingManualItem {
-                        ManualQueueComposerView(model: model)
-                    }
+            VStack(alignment: .leading, spacing: 12) {
+                if model.isComposingManualItem {
+                    ManualQueueComposerView(model: model)
+                }
 
-                    if model.queueItems.isEmpty && !model.isComposingManualItem {
-                        EmptyStateView(model: model)
-                    } else {
-                        ForEach(model.queueItems) { item in
-                            switch item {
-                            case .suggestion(let card):
-                                LoopSuggestionCardView(
-                                    card: card,
-                                    complete: { model.complete(card.suggestion) }
-                                )
-                            case .manual(let manualItem):
-                                ManualQueueItemCardView(item: manualItem) {
-                                    model.complete(manualItem)
-                                }
+                if model.queueItems.isEmpty && !model.isComposingManualItem {
+                    EmptyStateView(model: model)
+                } else {
+                    ForEach(model.queueItems) { item in
+                        switch item {
+                        case .suggestion(let card):
+                            LoopSuggestionCardView(
+                                card: card,
+                                complete: { model.complete(card.suggestion) }
+                            )
+                        case .manual(let manualItem):
+                            ManualQueueItemCardView(item: manualItem) {
+                                model.complete(manualItem)
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
-
-                QueueArrowButton(
-                    systemImage: "chevron.right",
-                    help: "Next queue item",
-                    isEnabled: model.canGoToNextQueuePage,
-                    action: { model.goToNextQueuePage() }
-                )
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+            QueueArrowButton(
+                systemImage: "chevron.right",
+                help: "Next queue item",
+                isEnabled: model.canGoToNextQueuePage,
+                action: { model.goToNextQueuePage() }
+            )
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .background(LoopTheme.pageFill)
     }
 
@@ -268,49 +271,45 @@ private struct LoopSuggestionCardView: View {
     var complete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(card.suggestion.evidence.threadTitle)
-                .font(.headline)
-                .foregroundStyle(LoopTheme.text)
-                .lineLimit(1)
+        VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(card.suggestion.evidence.threadTitle)
+                    .font(.headline)
+                    .foregroundStyle(LoopTheme.text)
+                    .lineLimit(1)
 
-            Text(card.suggestion.title)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(LoopTheme.text)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(card.suggestion.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(LoopTheme.text)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text(card.suggestion.action.text)
-                .font(.caption)
-                .foregroundStyle(LoopTheme.secondaryText)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(card.suggestion.action.text)
+                    .font(.caption)
+                    .foregroundStyle(LoopTheme.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            ConversationPreview(messages: card.recentMessages)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-
-            HStack {
-                Spacer()
-                Button {
-                    complete()
-                } label: {
-                    Label("Mark as Done", systemImage: "checkmark")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(card.suggestion.type.tint)
-                .controlSize(.small)
-                .fixedSize(horizontal: true, vertical: false)
-                .disabled(card.suggestion.state == .completed)
+                ConversationPreview(messages: card.recentMessages)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
+            .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(card.suggestion.type.tint.opacity(0.22), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+
+            QueueCompletionButton(
+                tint: card.suggestion.type.tint,
+                isDisabled: card.suggestion.state == .completed,
+                action: complete
+            )
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(card.suggestion.type.tint.opacity(0.22), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -319,41 +318,57 @@ private struct ManualQueueItemCardView: View {
     var complete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(item.title)
-                .font(.headline)
-                .foregroundStyle(LoopTheme.text)
-                .lineLimit(2)
+        VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(item.title)
+                            .font(.headline)
+                            .foregroundStyle(LoopTheme.text)
+                            .lineLimit(2)
 
-            if let body = item.body {
-                Text(body)
-                    .font(.caption)
-                    .foregroundStyle(LoopTheme.secondaryText)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack {
-                Spacer()
-                Button {
-                    complete()
-                } label: {
-                    Label("Mark as Done", systemImage: "checkmark")
+                        if let body = item.body {
+                            Text(body)
+                                .font(.caption)
+                                .foregroundStyle(LoopTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(item.kind.tint)
-                .controlSize(.small)
-                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
+            .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(item.kind.tint.opacity(0.20), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+
+            QueueCompletionButton(tint: item.kind.tint, action: complete)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(item.kind.tint.opacity(0.20), lineWidth: 1)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct QueueCompletionButton: View {
+    var tint: Color
+    var isDisabled = false
+    var action: () -> Void
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            Label("Mark as Done", systemImage: "checkmark")
         }
-        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        .buttonStyle(.borderedProminent)
+        .tint(tint)
+        .controlSize(.small)
+        .fixedSize(horizontal: true, vertical: false)
+        .disabled(isDisabled)
     }
 }
 
@@ -497,7 +512,7 @@ private struct ConversationPreview: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 260)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LoopTheme.secondaryFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
@@ -654,7 +669,7 @@ struct EmptyStateView: View {
         }
         .padding(.vertical, 52)
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
         .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)

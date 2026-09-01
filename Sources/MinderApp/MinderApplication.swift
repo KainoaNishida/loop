@@ -7,17 +7,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private static var retainedDelegate: MinderApplication?
     private static let backgroundSyncInterval: TimeInterval = 15 * 60
     private static let popoverWidth: CGFloat = 760
-    private static let minQueuePopoverHeight: CGFloat = 360
-    private static let maxQueuePopoverHeight: CGFloat = 620
-    private static let queueChromeHeight: CGFloat = 138
-    private static let emptyQueueCardHeight: CGFloat = 250
-    private static let composerEstimatedHeight: CGFloat = 186
-    private static let manualCardEstimatedHeight: CGFloat = 150
-    private static let suggestionCardBaseHeight: CGFloat = 176
-    private static let messagePreviewMinHeight: CGFloat = 54
-    private static let messagePreviewMaxHeight: CGFloat = 260
-    private static let messagePreviewRowEstimate: CGFloat = 38
-    private static let stackedQueueItemSpacing: CGFloat = 12
+    private static let queuePopoverHeight: CGFloat = 620
     private static let settingsPopoverHeight: CGFloat = 680
 
     private var statusItem: NSStatusItem?
@@ -148,7 +138,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
         let requestedHeight: CGFloat
         switch model.selectedTab {
         case .queue:
-            requestedHeight = queuePopoverHeight(for: model)
+            requestedHeight = Self.queuePopoverHeight
         case .settings:
             requestedHeight = Self.settingsPopoverHeight
         }
@@ -156,40 +146,6 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
         let visibleHeight = NSScreen.main?.visibleFrame.height ?? requestedHeight
         let cappedHeight = min(requestedHeight, max(420, visibleHeight - 96))
         return NSSize(width: Self.popoverWidth, height: cappedHeight)
-    }
-
-    @MainActor
-    private func queuePopoverHeight(for model: MinderViewModel) -> CGFloat {
-        var contentHeight: CGFloat = 0
-
-        if model.isComposingManualItem {
-            contentHeight += Self.composerEstimatedHeight
-        }
-
-        if let queueItem = model.queueItems.first {
-            if contentHeight > 0 {
-                contentHeight += Self.stackedQueueItemSpacing
-            }
-            contentHeight += estimatedHeight(for: queueItem)
-        } else if !model.isComposingManualItem {
-            contentHeight += Self.emptyQueueCardHeight
-        }
-
-        let requestedHeight = Self.queueChromeHeight + contentHeight
-        return min(Self.maxQueuePopoverHeight, max(Self.minQueuePopoverHeight, requestedHeight))
-    }
-
-    private func estimatedHeight(for item: LoopQueueItem) -> CGFloat {
-        switch item {
-        case .manual(let manualItem):
-            return Self.manualCardEstimatedHeight + (manualItem.body == nil ? 0 : 34)
-        case .suggestion(let card):
-            let previewHeight = min(
-                Self.messagePreviewMaxHeight,
-                max(Self.messagePreviewMinHeight, CGFloat(card.recentMessages.count) * Self.messagePreviewRowEstimate + 20)
-            )
-            return Self.suggestionCardBaseHeight + previewHeight
-        }
     }
 
     private func updateStatusItemTitle() {
