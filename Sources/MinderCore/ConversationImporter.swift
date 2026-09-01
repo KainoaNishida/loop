@@ -4,7 +4,7 @@ public final class ConversationImporter {
     public init() {}
 
     public func importSampleConversations(into store: MinderStore) throws -> ImportResult {
-        guard let url = Bundle.module.url(forResource: "sample-conversations", withExtension: "json") else {
+        guard let url = Self.sampleConversationsURL() else {
             throw ConversationImporterError.missingSampleResource
         }
         return try importConversationFile(at: url, into: store)
@@ -53,6 +53,27 @@ public final class ConversationImporter {
         }
 
         return try store.saveImport(source: source, threads: threads, messages: messages)
+    }
+
+    private static func sampleConversationsURL() -> URL? {
+        let bundleNames = ["Loop_MinderCore.bundle", "Minder_MinderCore.bundle"]
+        let fileName = "sample-conversations.json"
+
+        let searchRoots = [
+            Bundle.main.resourceURL,
+            Bundle.main.bundleURL
+        ].compactMap { $0 }
+
+        for root in searchRoots {
+            for bundleName in bundleNames {
+                let url = root.appendingPathComponent(bundleName, isDirectory: true).appendingPathComponent(fileName)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    return url
+                }
+            }
+        }
+
+        return Bundle.module.url(forResource: "sample-conversations", withExtension: "json")
     }
 }
 

@@ -29,6 +29,9 @@ struct OnboardingView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             model.load()
+            if !model.settingsSteps.contains(model.selectedStep) {
+                model.selectedStep = .profile
+            }
         }
     }
 
@@ -67,11 +70,7 @@ struct OnboardingView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 8) {
-                HealthStatusPill(health: PermissionHealth(
-                    kind: .appleMessages,
-                    state: model.health(for: .appleMessages).state,
-                    detail: model.messagesNextAction ?? "Messages setup is ready."
-                ))
+                OperationalStatusSidebarView(status: model.operationalStatus)
                 Text(model.statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -181,7 +180,7 @@ struct LoopSettingsPanelView: View {
                 .font(.headline.weight(.semibold))
 
             VStack(spacing: 4) {
-                ForEach(OnboardingStep.allCases) { step in
+                ForEach(model.settingsSteps) { step in
                     Button {
                         model.saveProfile()
                         model.selectedStep = step
@@ -206,11 +205,7 @@ struct LoopSettingsPanelView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 8) {
-                HealthStatusPill(health: PermissionHealth(
-                    kind: .appleMessages,
-                    state: model.health(for: .appleMessages).state,
-                    detail: model.messagesNextAction ?? "Messages setup is ready."
-                ))
+                OperationalStatusSidebarView(status: model.operationalStatus)
                 Text(model.statusMessage)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -259,26 +254,12 @@ struct LoopSettingsPanelView: View {
 
             Spacer()
 
-            Button("Back") {
-                model.back()
+            Button {
+                model.completeOnboarding()
+            } label: {
+                Label("Done", systemImage: "checkmark")
             }
-            .disabled(!model.canMoveBack)
-
-            if model.canMoveForward {
-                Button {
-                    model.next()
-                } label: {
-                    Label("Next", systemImage: "chevron.right")
-                }
-                .buttonStyle(.borderedProminent)
-            } else {
-                Button {
-                    model.completeOnboarding()
-                } label: {
-                    Label(model.profile.hasCompletedOnboarding ? "Done" : "Finish Setup", systemImage: "checkmark")
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            .buttonStyle(.borderedProminent)
         }
         .padding(12)
         .controlSize(.small)
@@ -325,8 +306,8 @@ private struct ProfileStep: View {
                         .frame(maxWidth: 320)
                 }
 
-                LabeledContent("Notification cadence") {
-                    Picker("Notification cadence", selection: $model.profile.notificationCadence) {
+                LabeledContent("Alert timing") {
+                    Picker("When to notify", selection: $model.profile.notificationCadence) {
                         ForEach(NotificationCadence.allCases, id: \.rawValue) { cadence in
                             Text(cadence.displayName).tag(cadence)
                         }
@@ -334,6 +315,16 @@ private struct ProfileStep: View {
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 420)
                 }
+
+                PermissionCard(
+                    health: model.health(for: .notifications),
+                    detail: notificationHelperText,
+                    primaryTitle: notificationPrimaryTitle,
+                    primarySystemImage: notificationPrimarySystemImage,
+                    primaryAction: notificationPrimaryAction,
+                    secondaryTitle: notificationSecondaryTitle,
+                    secondaryAction: notificationSecondaryAction
+                )
 
                 Stepper("Quiet hours start: \(timeLabel(model.profile.quietHoursStartMinutes))", value: $model.profile.quietHoursStartMinutes, in: 0...1439, step: 60)
                     .frame(maxWidth: 360, alignment: .leading)
@@ -349,6 +340,74 @@ private struct ProfileStep: View {
                     }
                 }
             }
+        }
+    }
+
+    private var notificationPrimaryTitle: String {
+        switch model.health(for: .notifications).state {
+        case .available:
+            return "Check Notifications"
+        case .revoked:
+            return "Open Notification Settings"
+        case .degraded, .unsupported:
+            return "Open Notification Settings"
+        case .missing:
+            return "Enable Notifications"
+        }
+    }
+
+    private var notificationPrimarySystemImage: String {
+        switch model.health(for: .notifications).state {
+        case .available:
+            return "arrow.clockwise"
+        case .revoked, .degraded, .unsupported:
+            return "bell.badge"
+        case .missing:
+            return "bell"
+        }
+    }
+
+    private var notificationPrimaryAction: () -> Void {
+        switch model.health(for: .notifications).state {
+        case .available:
+            return { model.refreshPermissions() }
+        case .revoked, .degraded, .unsupported:
+            return { model.openSettings(for: .notifications) }
+        case .missing:
+            return { model.request(.notifications) }
+        }
+    }
+
+    private var notificationSecondaryTitle: String? {
+        switch model.health(for: .notifications).state {
+        case .available, .missing:
+            return "Open Notification Settings"
+        case .revoked, .degraded, .unsupported:
+            return "Check Again"
+        }
+    }
+
+    private var notificationSecondaryAction: (() -> Void)? {
+        switch model.health(for: .notifications).state {
+        case .available, .missing:
+            return { model.openSettings(for: .notifications) }
+        case .revoked, .degraded, .unsupported:
+            return { model.refreshPermissions() }
+        }
+    }
+
+    private var notificationHelperText: String {
+        switch model.health(for: .notifications).state {
+        case .available:
+            return "Loop can send a digest when new alerts appear."
+        case .missing:
+            return "Click Enable Notifications to ask macOS for permission. Quiet mode keeps notifications off without limiting message monitoring."
+        case .revoked:
+            return "Notifications are off in macOS. Enable Loop in Notification Settings, then click Check Again."
+        case .degraded:
+            return "The notification prompt did not complete. Open Notification Settings, enable Loop if it appears, then click Check Again."
+        case .unsupported:
+            return "Notifications are unavailable in this launch mode. Use the packaged Loop app to enable them."
         }
     }
 }
@@ -427,10 +486,8 @@ private struct MessagesStep: View {
                 primaryAction: { model.openSettings(for: .fullDiskAccess) },
                 secondaryTitle: nil,
                 secondaryAction: nil,
-                helperText: "Grant Full Disk Access to the current app bundle shown below. If macOS asks to quit and reopen, return here and use Relaunch Current Build."
+                helperText: "In Privacy & Security > Full Disk Access, add or enable Loop. If macOS asks you to reopen the app, do that and come back to this screen."
             )
-
-            CurrentAppBundleCard(model: model)
 
             SourceSetupCard(
                 title: "Contact Names",
@@ -446,68 +503,10 @@ private struct MessagesStep: View {
             )
 
             SetupPathBox(lines: [
-                "1. Run scripts/build-dev-app.sh from the project folder.",
-                "2. Open Privacy & Security > Full Disk Access.",
-                "3. Add .build/LoopDev/Loop.app, then return and click Check Again.",
-                "4. Optional: request Contacts before importing so handles resolve to names."
+                "Full Disk Access lets Loop read your local Messages database. Loop imports read-only copies into its local cache.",
+                "Contacts are optional. Without Contacts, Loop can still work, but some people may appear as phone numbers or email addresses.",
+                "After permissions are ready, import recent Messages once. The Refresh button can update the queue after that."
             ])
-        }
-    }
-}
-
-private struct CurrentAppBundleCard: View {
-    @ObservedObject var model: OnboardingViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Current Running App", systemImage: "app.badge")
-                    .font(.headline)
-                Spacer()
-                Text(model.currentAppBuildStamp)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.currentAppBundlePath)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("This is the exact app that needs Full Disk Access. Avoid macOS relaunching another Loop copy by using the relaunch button here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    model.revealCurrentAppBundle()
-                } label: {
-                    Label("Reveal App", systemImage: "folder")
-                }
-
-                Button {
-                    model.copyCurrentAppBundlePath()
-                } label: {
-                    Label("Copy Path", systemImage: "doc.on.doc")
-                }
-
-                Button {
-                    model.relaunchCurrentAppBundle()
-                } label: {
-                    Label("Relaunch Current Build", systemImage: "arrow.clockwise.circle")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .controlSize(.small)
-        }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
@@ -854,17 +853,36 @@ private struct AboutStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
-                title: "About Loop",
-                subtitle: "Messages-only trusted alpha for catching follow-ups, deadlines, and small tasks from local conversations."
+                title: "How Loop Works",
+                subtitle: "Loop keeps a small queue of conversations that may need your attention, then gets out of the way."
             )
 
-            VStack(alignment: .leading, spacing: 10) {
-                AboutRow(title: "Channel", value: LoopReleaseChannel.current().displayName)
-                AboutRow(title: "Bundle ID", value: Bundle.main.bundleIdentifier ?? LoopReleaseChannel.current().bundleIdentifier)
-                AboutRow(title: "Version", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"))")
-                AboutRow(title: "Build", value: Bundle.main.object(forInfoDictionaryKey: "LoopDevBuildStamp") as? String ?? "unstamped")
-                AboutRow(title: "Bundle path", value: Bundle.main.bundleURL.path)
-                AboutRow(title: "Local data", value: LoopReleaseChannel.current().appSupportDirectoryName)
+            VStack(alignment: .leading, spacing: 14) {
+                GuideSection(
+                    systemImage: "message.badge",
+                    title: "What Loop watches",
+                    detail: "Loop reviews recent Apple Messages locally and looks for conversations with unanswered questions, deadlines, reminders, or follow-ups."
+                )
+                GuideSection(
+                    systemImage: "arrow.clockwise",
+                    title: "How the queue updates",
+                    detail: "Use Refresh whenever you want to recheck Messages. Loop also refreshes in the background and replaces older active alerts when newer messages matter."
+                )
+                GuideSection(
+                    systemImage: "checkmark.circle",
+                    title: "Mark an alert done",
+                    detail: "Open the queue, review the message context, then mark the alert done when that conversation no longer needs action."
+                )
+                GuideSection(
+                    systemImage: "bell.badge",
+                    title: "When notifications appear",
+                    detail: "Notifications appear only for genuinely new alerts when notifications are allowed. Set cadence to Quiet if you do not want system notifications."
+                )
+                GuideSection(
+                    systemImage: "cloud",
+                    title: "Local mode works without Gemini credentials",
+                    detail: "If you save Gemini credentials and enable Cloud AI, selected message snippets may be sent to Gemini to improve alert ranking."
+                )
             }
         }
     }
@@ -1151,13 +1169,74 @@ private struct HealthStatusPill: View {
     var health: PermissionHealth
 
     var body: some View {
-        Label(health.state.displayName, systemImage: health.state.systemImage)
+        Label(title, systemImage: systemImage)
             .font(.caption.weight(.medium))
             .foregroundStyle(health.state.tint)
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(health.state.tint.opacity(0.12), in: Capsule())
+    }
+
+    private var title: String {
+        guard health.kind == .notifications else {
+            return health.state.displayName
+        }
+
+        switch health.state {
+        case .available:
+            return "Enabled"
+        case .missing:
+            return "Not enabled"
+        case .degraded:
+            return "Needs check"
+        case .revoked:
+            return "Off"
+        case .unsupported:
+            return "Unavailable"
+        }
+    }
+
+    private var systemImage: String {
+        guard health.kind == .notifications else {
+            return health.state.systemImage
+        }
+
+        switch health.state {
+        case .available:
+            return "checkmark.circle.fill"
+        case .missing:
+            return "bell.badge"
+        case .degraded:
+            return "questionmark.circle.fill"
+        case .revoked, .unsupported:
+            return "xmark.circle.fill"
+        }
+    }
+}
+
+private struct OperationalStatusSidebarView: View {
+    var status: LoopOperationalStatus
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(status.state.tint)
+                .frame(width: 22, height: 5)
+            Label(status.title, systemImage: status.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(status.state.tint)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(status.state.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(status.state.tint.opacity(0.20), lineWidth: 1)
+        }
+        .help(status.detail)
     }
 }
 
@@ -1173,24 +1252,32 @@ private struct SourcePriorityPill: View {
     }
 }
 
-private struct AboutRow: View {
+private struct GuideSection: View {
+    var systemImage: String
     var title: String
-    var value: String
+    var detail: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 96, alignment: .leading)
-            Text(value)
-                .font(.system(.callout, design: .monospaced))
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-            Spacer()
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
     }
 }
 

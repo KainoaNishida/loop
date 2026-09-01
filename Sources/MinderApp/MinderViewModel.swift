@@ -178,6 +178,7 @@ final class MinderViewModel: ObservableObject {
     @Published private(set) var profile: UserProfile?
     @Published private(set) var permissionHealth: [PermissionHealth] = []
     @Published private(set) var lastSyncAt: Date?
+    @Published private(set) var lastRefreshFailed = false
     @Published var selectedSuggestion: Suggestion?
 #if LOOP_INTERNAL_DIAGNOSTICS
     @Published var isShowingGeminiDiagnostics = false
@@ -227,6 +228,16 @@ final class MinderViewModel: ObservableObject {
 
     var aiModeLabel: String {
         GeminiConfig.fromEnvironment() != nil && profile?.cloudAIEnabled == true ? "Gemini" : "Local AI"
+    }
+
+    var operationalStatus: LoopOperationalStatus {
+        LoopOperationalStatus.make(
+            profile: profile,
+            permissionHealth: permissionHealth,
+            sources: sources,
+            lastRefreshFailed: lastRefreshFailed,
+            hasCloudAIConfig: GeminiConfig.fromEnvironment() != nil
+        )
     }
 
     var activeSuggestions: [Suggestion] {
@@ -340,6 +351,7 @@ final class MinderViewModel: ObservableObject {
             }
             try refreshQueuePresentation()
         } catch {
+            lastRefreshFailed = true
             statusMessage = "Refresh failed: \(error.localizedDescription)"
         }
     }
@@ -493,6 +505,7 @@ final class MinderViewModel: ObservableObject {
                 let importResult = try await self.importRecentMessages()
                 let (generated, mode, fallbackError) = try await self.generateStoredSuggestions()
                 let activeAlertsAfterSync = try self.activeGeneratedAlertsFromStore()
+                self.lastRefreshFailed = false
                 self.lastSyncAt = Date()
                 self.statusMessage = "Checked Messages: \(importResult.insertedMessages) new, \(importResult.skippedMessages) unchanged. \(self.generationSummary(generated, mode: mode))."
                 if generated.rankedDraftCount == 0 {
@@ -510,6 +523,7 @@ final class MinderViewModel: ObservableObject {
                     activeAlertsAfterSync: activeAlertsAfterSync
                 )
             } catch {
+                self.lastRefreshFailed = true
                 self.statusMessage = "Refresh failed: \(error.localizedDescription)"
                 self.refresh()
             }
@@ -798,7 +812,7 @@ final class MinderViewModel: ObservableObject {
                 decisionCount: 0,
                 rankedCount: report.rankedDraftCount,
                 savedCount: report.savedCount,
-                detail: "Cloud AI is enabled but GEMINI_API_KEY is missing; local fallback generated suggestions."
+                detail: "Cloud AI is enabled but Gemini credentials are missing; local fallback generated suggestions."
             )
 #endif
             return (report, SuggestionGenerationMode.localFallback.displayName, GeminiDebugError.missingGeminiConfig)
@@ -938,7 +952,7 @@ final class MinderViewModel: ObservableObject {
                 decisionCount: 0,
                 rankedCount: 0,
                 savedCount: 0,
-                detail: "Replay skipped because GEMINI_API_KEY is missing."
+                detail: "Replay skipped because Gemini credentials are missing."
             )
         }
 
@@ -1263,7 +1277,7 @@ private enum GeminiDebugError: Error, LocalizedError {
             return "No Gemini diagnostics are available yet. Click Refresh with Gemini enabled first."
 #endif
         case .missingGeminiConfig:
-            return "GEMINI_API_KEY is missing."
+            return "Gemini credentials are missing."
         }
     }
 }

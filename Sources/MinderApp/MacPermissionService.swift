@@ -52,7 +52,11 @@ final class MacPermissionService: PermissionServicing {
             }
             return PermissionHealth(kind: .notifications, state: .revoked, detail: "Notifications were denied. You can re-enable them in System Settings.")
         } catch {
-            return PermissionHealth(kind: .notifications, state: .degraded, detail: "Notification request failed: \(error.localizedDescription)")
+            return PermissionHealth(
+                kind: .notifications,
+                state: .degraded,
+                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Loop, then click Check Again. \(error.localizedDescription)"
+            )
         }
     }
 
@@ -197,7 +201,7 @@ final class MacPermissionService: PermissionServicing {
         PermissionHealth(
             kind: .notifications,
             state: .unsupported,
-            detail: "Notifications require a packaged .app bundle. `swift run Loop` launches from .build, so notification status and prompts are unavailable in this dev mode."
+            detail: "Notifications are unavailable in this launch mode. Open the packaged Loop app, then check again."
         )
     }
 
@@ -245,7 +249,7 @@ final class MacPermissionService: PermissionServicing {
         if let config = GeminiConfig.fromEnvironment() {
             return PermissionHealth(kind: .cloudAI, state: .available, detail: "Gemini credentials are configured for \(config.model). Cloud AI still requires onboarding opt-in.")
         }
-        return PermissionHealth(kind: .cloudAI, state: .missing, detail: "Gemini credentials are not configured. Add GEMINI_API_KEY to use cloud suggestions. Local suggestions remain available.")
+        return PermissionHealth(kind: .cloudAI, state: .missing, detail: "Gemini credentials are not configured. Local suggestions remain available.")
     }
 
     private func settingsURL(for kind: PermissionKind) -> URL? {

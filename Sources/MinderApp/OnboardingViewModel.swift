@@ -121,18 +121,24 @@ final class OnboardingViewModel: ObservableObject {
         health(for: .contacts).state != .available
     }
 
-    var currentAppBundlePath: String {
-        Bundle.main.bundleURL.path
+    var operationalStatus: LoopOperationalStatus {
+        LoopOperationalStatus.make(
+            profile: profile,
+            permissionHealth: permissionHealth,
+            sources: sources,
+            lastRefreshFailed: false,
+            hasCloudAIConfig: hasGeminiConfig
+        )
     }
 
-    var currentAppBuildStamp: String {
-        Bundle.main.object(forInfoDictionaryKey: "LoopDevBuildStamp") as? String ?? "unstamped"
+    var settingsSteps: [OnboardingStep] {
+        [.profile, .appearance, .messages, .cloudAI, .privacy, .about]
     }
 
     var messagesNextAction: String? {
         switch messagesReadiness {
         case .needsPermission:
-            return "Build the dev app with scripts/build-dev-app.sh, grant Full Disk Access to .build/LoopDev/Loop.app, then click Check Again."
+            return "Grant Full Disk Access to Loop, then return here and click Check Again."
         case .needsSetup:
             return health(for: .appleMessages).detail
         case .ready:
@@ -247,7 +253,7 @@ final class OnboardingViewModel: ObservableObject {
         perform("Requesting \(kind.displayName)...") {
             let health = try await self.coordinator.request(kind)
             self.replaceHealth(health)
-            self.statusMessage = "\(kind.displayName): \(health.state.displayName)."
+            self.statusMessage = self.statusMessage(for: health)
             self.onChange()
         }
     }
@@ -275,7 +281,7 @@ final class OnboardingViewModel: ObservableObject {
 
             try self.geminiConfigStore.save(config)
             self.permissionHealth = try await self.refreshAllHealth()
-            self.statusMessage = "Saved Gemini setup to ~/.loop.env."
+            self.statusMessage = "Saved Gemini setup."
             self.onChange()
         }
     }
@@ -355,34 +361,10 @@ final class OnboardingViewModel: ObservableObject {
         perform("Opening System Settings...") {
             let opened = await self.coordinator.openSystemSettings(for: kind)
             if opened, kind == .fullDiskAccess || kind == .appleMessages {
-                self.statusMessage = "Opened Full Disk Access. Add or toggle the current app bundle, then return to Loop and use Relaunch Current Build."
+                self.statusMessage = "Opened Full Disk Access. Add or toggle Loop, then return here and click Check Again."
             } else {
                 self.statusMessage = opened ? "Opened System Settings for \(kind.displayName)." : "Could not open System Settings for \(kind.displayName)."
             }
-        }
-    }
-
-    func revealCurrentAppBundle() {
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-        statusMessage = "Revealed the current Loop app bundle in Finder."
-    }
-
-    func copyCurrentAppBundlePath() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(currentAppBundlePath, forType: .string)
-        statusMessage = "Copied current app bundle path."
-    }
-
-    func relaunchCurrentAppBundle() {
-        do {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            process.arguments = ["-n", Bundle.main.bundleURL.path]
-            try process.run()
-            statusMessage = "Relaunching current Loop build..."
-            NSApp.terminate(nil)
-        } catch {
-            statusMessage = "Could not relaunch current Loop build: \(error.localizedDescription)"
         }
     }
 
@@ -390,6 +372,23 @@ final class OnboardingViewModel: ObservableObject {
         permissionHealth.removeAll { $0.kind == health.kind }
         permissionHealth.append(health)
         permissionHealth.sort { $0.kind.rawValue < $1.kind.rawValue }
+    }
+
+    private func statusMessage(for health: PermissionHealth) -> String {
+        if health.kind == .notifications {
+            switch health.state {
+            case .available:
+                return "Notifications are enabled."
+            case .missing:
+                return "Notifications have not been enabled yet."
+            case .revoked:
+                return "Notifications are off in System Settings."
+            case .degraded, .unsupported:
+                return health.detail
+            }
+        }
+
+        return "\(health.kind.displayName): \(health.state.displayName)."
     }
 
     private func loadGeminiConfigInputs() {

@@ -532,6 +532,153 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(model.geminiAPIKeyInput, "stored-gemini-key")
         XCTAssertEqual(model.geminiModelInput, "gemini-2.5-flash")
     }
+
+    func testNotificationRequestFailureShowsActionableStatusMessage() throws {
+        let store = try makeStore()
+        let model = makeOnboardingModel(
+            store: store,
+            permissionService: FakePermissionService(notificationHealth: PermissionHealth(
+                kind: .notifications,
+                state: .degraded,
+                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Loop, then click Check Again."
+            ))
+        )
+
+        model.request(.notifications)
+        waitForOnboardingWorkToFinish(model)
+
+        XCTAssertTrue(model.statusMessage.contains("macOS could not show the notification prompt"))
+        XCTAssertFalse(model.statusMessage.contains("Notifications: Degraded"))
+    }
+
+    func testOperationalStatusReadyWhenRequiredSetupIsAvailable() throws {
+        let status = operationalStatus(
+            permissionHealth: defaultPermissionHealth(),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .ready)
+        XCTAssertEqual(status.title, "Ready")
+        XCTAssertEqual(status.targetSettingsStep, .about)
+    }
+
+    func testOperationalStatusLimitedWhenOptionalContactsAreMissing() throws {
+        let status = operationalStatus(
+            permissionHealth: defaultPermissionHealth(contacts: .missing),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .ready)
+        XCTAssertTrue(status.detail.contains("Messages permissions are working"))
+    }
+
+    func testOperationalStatusNeedsSetupWhenFullDiskAccessIsMissing() throws {
+        let status = operationalStatus(
+            permissionHealth: defaultPermissionHealth(fullDisk: .missing),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .needsSetup)
+        XCTAssertEqual(status.targetSettingsStep, .messages)
+    }
+
+    func testOperationalStatusNeedsSetupWhenMessagesHaveNotImported() throws {
+        let status = operationalStatus(
+            permissionHealth: defaultPermissionHealth(),
+            sources: []
+        )
+
+        XCTAssertEqual(status.state, .needsSetup)
+        XCTAssertEqual(status.targetSettingsStep, .messages)
+    }
+
+    func testOperationalStatusLimitedWhenNotificationsAreDeniedAndCadenceIsNotQuiet() throws {
+        let status = operationalStatus(
+            profile: UserProfile(notificationCadence: .hourlyDigest, completedOnboardingAt: Date()),
+            permissionHealth: defaultPermissionHealth(notifications: .revoked),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .limited)
+        XCTAssertEqual(status.title, "Notifications off")
+        XCTAssertEqual(status.targetSettingsStep, .profile)
+    }
+
+    func testOperationalStatusLimitedWhenNotificationsAreNotEnabled() throws {
+        let status = operationalStatus(
+            profile: UserProfile(notificationCadence: .hourlyDigest, completedOnboardingAt: Date()),
+            permissionHealth: defaultPermissionHealth(notifications: .missing),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .limited)
+        XCTAssertEqual(status.title, "Enable notifications")
+        XCTAssertTrue(status.detail.contains("Notifications have not been enabled yet"))
+        XCTAssertEqual(status.targetSettingsStep, .profile)
+    }
+
+    func testOperationalStatusAllowsQuietCadenceWithoutNotificationPermission() throws {
+        let status = operationalStatus(
+            profile: UserProfile(notificationCadence: .quiet, completedOnboardingAt: Date()),
+            permissionHealth: defaultPermissionHealth(notifications: .revoked),
+            sources: [appleMessagesSource(lastSyncAt: Date())]
+        )
+
+        XCTAssertEqual(status.state, .ready)
+        XCTAssertTrue(status.detail.contains("Messages permissions are working"))
+    }
+
+    func testOperationalStatusLimitedWhenCloudAIEnabledWithoutCredentials() throws {
+        var profile = UserProfile(notificationCadence: .hourlyDigest, completedOnboardingAt: Date())
+        profile.cloudAIEnabled = true
+
+        let status = operationalStatus(
+            profile: profile,
+            permissionHealth: defaultPermissionHealth(),
+            sources: [appleMessagesSource(lastSyncAt: Date())],
+            hasCloudAIConfig: false
+        )
+
+        XCTAssertEqual(status.state, .limited)
+        XCTAssertEqual(status.title, "Messages ready")
+        XCTAssertEqual(status.targetSettingsStep, .cloudAI)
+    }
+
+    func testOperationalStatusLimitedWhenMessagesRefreshIsStale() throws {
+        let status = operationalStatus(
+            permissionHealth: defaultPermissionHealth(),
+            sources: [appleMessagesSource(lastSyncAt: Date(timeIntervalSince1970: 1_800_000_000))],
+            now: Date(timeIntervalSince1970: 1_800_000_000 + 3 * 60 * 60)
+        )
+
+        XCTAssertEqual(status.state, .limited)
+        XCTAssertEqual(status.title, "Refresh recommended")
+        XCTAssertEqual(status.targetSettingsStep, .messages)
+    }
+
+    func testNormalSettingsCopyHidesDeveloperBuildDetails() throws {
+        let source = try sourceFileContents("Sources/MinderApp/OnboardingView.swift")
+
+        XCTAssertFalse(source.contains("scripts/build-dev-app.sh"))
+        XCTAssertFalse(source.contains(".build/LoopDev"))
+        XCTAssertFalse(source.contains("Current Running App"))
+        XCTAssertFalse(source.contains("Relaunch Current Build"))
+        XCTAssertFalse(source.contains("Bundle ID"))
+        XCTAssertFalse(source.contains("Bundle path"))
+        XCTAssertFalse(source.contains("Build stamp"))
+    }
+
+    func testAboutGuideExplainsUserJourney() throws {
+        let source = try sourceFileContents("Sources/MinderApp/OnboardingView.swift")
+
+        XCTAssertTrue(source.contains("How Loop Works"))
+        XCTAssertTrue(source.contains("Loop reviews recent Apple Messages locally"))
+        XCTAssertTrue(source.contains("Use Refresh"))
+        XCTAssertTrue(source.contains("Mark an alert done"))
+        XCTAssertTrue(source.contains("Notifications appear only for genuinely new alerts"))
+        XCTAssertTrue(source.contains("Local mode works without Gemini credentials"))
+        XCTAssertTrue(source.contains("selected message snippets may be sent to Gemini"))
+    }
 }
 
 @MainActor
@@ -551,11 +698,12 @@ private func makeModel(
 @MainActor
 private func makeOnboardingModel(
     store: MinderStore,
+    permissionService: any PermissionServicing = FakePermissionService(),
     geminiConfigStore: GeminiConfigStore = GeminiConfigStore()
 ) -> OnboardingViewModel {
     OnboardingViewModel(
         store: store,
-        permissionService: FakePermissionService(),
+        permissionService: permissionService,
         geminiConfigStore: geminiConfigStore,
         onComplete: {},
         onChange: {}
@@ -598,6 +746,50 @@ private func saveMessagesImport(
         )
     }
     _ = try store.saveImport(source: source, threads: threads, messages: threadMessages.map(\.message))
+}
+
+private func operationalStatus(
+    profile: UserProfile = UserProfile(notificationCadence: .hourlyDigest, completedOnboardingAt: Date()),
+    permissionHealth: [PermissionHealth],
+    sources: [ConversationSource],
+    lastRefreshFailed: Bool = false,
+    hasCloudAIConfig: Bool = true,
+    now: Date = Date()
+) -> LoopOperationalStatus {
+    LoopOperationalStatus.make(
+        profile: profile,
+        permissionHealth: permissionHealth,
+        sources: sources,
+        lastRefreshFailed: lastRefreshFailed,
+        hasCloudAIConfig: hasCloudAIConfig,
+        now: now
+    )
+}
+
+private func defaultPermissionHealth(
+    fullDisk: HealthState = .available,
+    messages: HealthState = .available,
+    notifications: HealthState = .available,
+    contacts: HealthState = .available
+) -> [PermissionHealth] {
+    [
+        PermissionHealth(kind: .fullDiskAccess, state: fullDisk, detail: fullDisk.rawValue),
+        PermissionHealth(kind: .appleMessages, state: messages, detail: messages.rawValue),
+        PermissionHealth(kind: .notifications, state: notifications, detail: notifications.rawValue),
+        PermissionHealth(kind: .contacts, state: contacts, detail: contacts.rawValue)
+    ]
+}
+
+private func appleMessagesSource(lastSyncAt: Date?) -> ConversationSource {
+    ConversationSource(id: "apple", name: "Apple Messages", kind: .appleMessages, lastSyncAt: lastSyncAt)
+}
+
+private func sourceFileContents(_ path: String) throws -> String {
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    return try String(contentsOf: packageRoot.appendingPathComponent(path))
 }
 
 private func testMessage(
@@ -664,9 +856,11 @@ private func waitForOnboardingWorkToFinish(_ model: OnboardingViewModel) {
 }
 
 private struct FakePermissionService: PermissionServicing {
+    var notificationHealth = PermissionHealth(kind: .notifications, state: .available, detail: "ok")
+
     func refreshPermissionHealth() async -> [PermissionHealth] { [] }
     func requestNotifications() async -> PermissionHealth {
-        PermissionHealth(kind: .notifications, state: .available, detail: "ok")
+        notificationHealth
     }
     func requestContactsAccess() async -> PermissionHealth {
         PermissionHealth(kind: .contacts, state: .available, detail: "ok")

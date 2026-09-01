@@ -74,9 +74,9 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$BUILD_DIR/Loop" "$MACOS_DIR/Loop"
 if [[ -d "$BUILD_DIR/Loop_MinderCore.bundle" ]]; then
-  cp -R "$BUILD_DIR/Loop_MinderCore.bundle" "$APP_DIR/Loop_MinderCore.bundle"
+  cp -R "$BUILD_DIR/Loop_MinderCore.bundle" "$RESOURCES_DIR/Loop_MinderCore.bundle"
 elif [[ -d "$BUILD_DIR/Minder_MinderCore.bundle" ]]; then
-  cp -R "$BUILD_DIR/Minder_MinderCore.bundle" "$APP_DIR/Minder_MinderCore.bundle"
+  cp -R "$BUILD_DIR/Minder_MinderCore.bundle" "$RESOURCES_DIR/Minder_MinderCore.bundle"
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
@@ -125,7 +125,7 @@ PLIST
 chmod +x "$MACOS_DIR/Loop"
 
 if command -v codesign >/dev/null 2>&1; then
-  codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+  codesign --force --deep --sign - "$APP_DIR"
 fi
 
 echo "Built $APP_DIR"

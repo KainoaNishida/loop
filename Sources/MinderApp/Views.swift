@@ -88,7 +88,7 @@ struct InboxView: View {
                 }
                 .frame(width: 34, height: 34)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Loop")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(LoopTheme.text)
@@ -194,11 +194,14 @@ struct InboxView: View {
     }
 
     private var footer: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Label(messagesFooterText, systemImage: "message")
-                .font(.caption)
-                .foregroundStyle(LoopTheme.secondaryText)
-                .lineLimit(1)
+        HStack(alignment: .center, spacing: 12) {
+            OperationalStatusButton(
+                status: model.operationalStatus,
+                isRefreshing: model.isGeneratingSuggestions
+            ) {
+                settingsModel.selectedStep = model.operationalStatus.targetSettingsStep
+                model.openSettings()
+            }
 
             Spacer()
 
@@ -214,13 +217,6 @@ struct InboxView: View {
         .background(LoopTheme.elevatedFill)
     }
 
-    private var messagesFooterText: String {
-        if let source = model.appleMessagesSource, let sync = source.lastSyncAt {
-            return "\(model.appleMessagesCount) messages · Last updated \(sync.relativeLabel)"
-        }
-        return "\(model.appleMessagesCount) messages · Not refreshed yet"
-    }
-
     private var lastUpdatedText: String {
         if let source = model.appleMessagesSource, let sync = source.lastSyncAt {
             return "Last updated \(sync.relativeLabel)"
@@ -229,6 +225,53 @@ struct InboxView: View {
             return "Messages loaded · refresh status unknown"
         }
         return "Not refreshed yet"
+    }
+}
+
+private struct OperationalStatusButton: View {
+    var status: LoopOperationalStatus
+    var isRefreshing: Bool
+    var action: () -> Void
+
+    private var tint: Color {
+        status.state.tint
+    }
+
+    private var title: String {
+        isRefreshing ? "Refreshing..." : status.title
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(tint)
+                    .frame(width: 22, height: 5)
+                Image(systemName: isRefreshing ? "arrow.clockwise" : status.systemImage)
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(status.detail)
+                    .font(.caption2)
+                    .foregroundStyle(LoopTheme.secondaryText)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(LoopTheme.tertiaryText)
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(maxWidth: 360, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(tint.opacity(0.20), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(status.detail)
     }
 }
 
