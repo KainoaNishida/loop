@@ -125,6 +125,24 @@ public enum ManualQueueItemState: String, Codable, CaseIterable, Hashable {
     }
 }
 
+public enum AppColorScheme: String, Codable, CaseIterable, Hashable {
+    case ocean
+    case forest
+    case plum
+    case ember
+    case graphite
+
+    public var displayName: String {
+        switch self {
+        case .ocean: return "Ocean"
+        case .forest: return "Forest"
+        case .plum: return "Plum"
+        case .ember: return "Ember"
+        case .graphite: return "Graphite"
+        }
+    }
+}
+
 public struct ConversationSource: Identifiable, Codable, Equatable {
     public var id: String
     public var name: String
@@ -224,6 +242,7 @@ public struct UserProfile: Codable, Equatable {
     public var quietHoursEndMinutes: Int
     public var sourcePriority: [SourceKind]
     public var cloudAIEnabled: Bool
+    public var appColorScheme: AppColorScheme
     public var completedOnboardingAt: Date?
     public var createdAt: Date
     public var updatedAt: Date
@@ -241,6 +260,7 @@ public struct UserProfile: Codable, Equatable {
         quietHoursEndMinutes: Int = 7 * 60,
         sourcePriority: [SourceKind] = [.appleMessages, .sample],
         cloudAIEnabled: Bool = false,
+        appColorScheme: AppColorScheme = .ocean,
         completedOnboardingAt: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -253,6 +273,7 @@ public struct UserProfile: Codable, Equatable {
         self.quietHoursEndMinutes = quietHoursEndMinutes
         self.sourcePriority = sourcePriority
         self.cloudAIEnabled = cloudAIEnabled
+        self.appColorScheme = appColorScheme
         self.completedOnboardingAt = completedOnboardingAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt

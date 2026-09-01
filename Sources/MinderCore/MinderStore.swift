@@ -119,6 +119,7 @@ public final class MinderStore {
             quietHoursEndMinutes: profile.quietHoursEndMinutes,
             sourcePriority: profile.sourcePriority,
             cloudAIEnabled: profile.cloudAIEnabled,
+            appColorScheme: profile.appColorScheme,
             completedOnboardingAt: profile.completedOnboardingAt,
             createdAt: createdAt,
             updatedAt: Date()
@@ -130,9 +131,9 @@ public final class MinderStore {
                 INSERT INTO user_profiles (
                     id, display_name, time_zone_identifier, notification_cadence,
                     quiet_hours_start_minutes, quiet_hours_end_minutes, source_priority,
-                    cloud_ai_enabled, completed_onboarding_at, created_at, updated_at
+                    cloud_ai_enabled, app_color_scheme, completed_onboarding_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     display_name = excluded.display_name,
                     time_zone_identifier = excluded.time_zone_identifier,
@@ -141,6 +142,7 @@ public final class MinderStore {
                     quiet_hours_end_minutes = excluded.quiet_hours_end_minutes,
                     source_priority = excluded.source_priority,
                     cloud_ai_enabled = excluded.cloud_ai_enabled,
+                    app_color_scheme = excluded.app_color_scheme,
                     completed_onboarding_at = excluded.completed_onboarding_at,
                     updated_at = excluded.updated_at
                 """,
@@ -153,6 +155,7 @@ public final class MinderStore {
                     .int(saved.quietHoursEndMinutes),
                     .text(encodeSourceKindArray(saved.sourcePriority)),
                     .int(saved.cloudAIEnabled ? 1 : 0),
+                    .text(saved.appColorScheme.rawValue),
                     optionalDate(saved.completedOnboardingAt),
                     requiredDate(saved.createdAt),
                     requiredDate(saved.updatedAt)
@@ -359,8 +362,10 @@ public final class MinderStore {
             var currentThreadIds = Set<String>()
             for draft in drafts where draft.confidence >= 0.15 {
                 currentThreadIds.insert(draft.threadId)
-                let id = suggestionID(for: draft)
-                let existing = try database.query("SELECT * FROM suggestions WHERE id = ?", [.text(id)]).first
+                let currentId = suggestionID(for: draft)
+                let existingMatch = try existingSuggestionRow(for: draft, currentId: currentId)
+                let id = existingMatch?.id ?? currentId
+                let existing = existingMatch?.row
                 let createdAt = existing.flatMap { DateCoding.date(from: $0["created_at"] ?? nil) } ?? now
                 let state = existing.flatMap { row -> SuggestionState? in
                     guard let raw = row["state"] ?? nil else { return nil }
@@ -431,7 +436,9 @@ public final class MinderStore {
                         optionalDate(suggestion.snoozedUntil)
                     ]
                 )
-                try supersedeOlderActiveSuggestions(threadId: draft.threadId, keeping: suggestion.id, updatedAt: now)
+                if suggestion.state.isQueueActive {
+                    try supersedeOlderActiveSuggestions(threadId: draft.threadId, keeping: suggestion.id, updatedAt: now)
+                }
                 saved.append(suggestion)
             }
 
@@ -741,12 +748,14 @@ public final class MinderStore {
                 quiet_hours_end_minutes INTEGER NOT NULL,
                 source_priority TEXT NOT NULL,
                 cloud_ai_enabled INTEGER NOT NULL,
+                app_color_scheme TEXT NOT NULL DEFAULT 'ocean',
                 completed_onboarding_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        try ensureUserProfileSchema()
 
         try database.execute(
             """
@@ -760,6 +769,16 @@ public final class MinderStore {
         )
 
         try cleanupLegacyGmailData()
+    }
+
+    private func ensureUserProfileSchema() throws {
+        var columns = try tableColumns("user_profiles")
+        try addColumnIfMissing(
+            table: "user_profiles",
+            column: "app_color_scheme",
+            definition: "TEXT NOT NULL DEFAULT 'ocean'",
+            existingColumns: &columns
+        )
     }
 
     private func ensureManualQueueItemSchema() throws {
@@ -941,6 +960,40 @@ public final class MinderStore {
         )
     }
 
+    private func existingSuggestionRow(
+        for draft: SuggestionDraft,
+        currentId: String
+    ) throws -> (id: String, row: [String: String?])? {
+        if let row = try database.query("SELECT * FROM suggestions WHERE id = ?", [.text(currentId)]).first {
+            return (currentId, row)
+        }
+
+        let legacyId = legacySuggestionID(for: draft)
+        guard
+            let legacyRow = try database.query(
+                """
+                SELECT * FROM suggestions
+                WHERE id = ?
+                    AND source_id = ?
+                    AND thread_id = ?
+                    AND type = ?
+                    AND message_id = ?
+                """,
+                [
+                    .text(legacyId),
+                    .text(draft.sourceId),
+                    .text(draft.threadId),
+                    .text(draft.type.rawValue),
+                    .text(draft.messageId)
+                ]
+            ).first
+        else {
+            return nil
+        }
+
+        return (legacyId, legacyRow)
+    }
+
     private func supersedeActiveSuggestionsNotIn(threadIds: Set<String>, updatedAt: Date) throws {
         let terminalStates = "'dismissed', 'completed', 'superseded'"
         if threadIds.isEmpty {
@@ -1077,6 +1130,7 @@ private func userProfile(from row: [String: String?]) throws -> UserProfile {
         quietHoursEndMinutes: Int(try required(row, "quiet_hours_end_minutes")) ?? 0,
         sourcePriority: decodeSourceKindArray(try required(row, "source_priority")),
         cloudAIEnabled: try required(row, "cloud_ai_enabled") == "1",
+        appColorScheme: try enumValue(row, "app_color_scheme"),
         completedOnboardingAt: DateCoding.date(from: row["completed_onboarding_at"] ?? nil),
         createdAt: try requiredDate(row, "created_at"),
         updatedAt: try requiredDate(row, "updated_at")
@@ -1191,9 +1245,25 @@ private func geminiDiagnosticRun(from row: [String: String?]) throws -> GeminiDi
 private func suggestionID(for draft: SuggestionDraft) -> String {
     let base = [
         draft.sourceId,
+        draft.threadId,
+        draft.type.rawValue,
+        draft.messageId
+    ].joined(separator: "|")
+    return "suggestion-current-\(base.stableHash)"
+}
+
+private func legacySuggestionID(for draft: SuggestionDraft) -> String {
+    let base = [
+        draft.sourceId,
         draft.threadId
     ].joined(separator: "|")
     return "suggestion-current-\(base.stableHash)"
+}
+
+private extension SuggestionState {
+    var isQueueActive: Bool {
+        self != .completed && self != .dismissed && self != .superseded
+    }
 }
 
 private func required(_ row: [String: String?], _ column: String) throws -> String {

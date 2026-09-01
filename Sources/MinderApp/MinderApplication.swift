@@ -43,12 +43,17 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
             let model = MinderViewModel(
                 store: store,
                 permissionService: permissionService,
-                messagesImporter: messagesImporter
+                messagesImporter: messagesImporter,
+                alertNotifier: LoopUserNotificationService()
             )
             model.showQueueWindow = { [weak self] in
                 Task { @MainActor in
                     self?.showQueueWindow()
                 }
+            }
+            model.isQueueInterfaceVisible = { [weak self] in
+                guard let self else { return false }
+                return (self.popover?.isShown ?? false) || (self.queueWindow?.isVisible ?? false)
             }
             viewModel = model
 

@@ -5,6 +5,10 @@ import MinderCore
 struct OnboardingView: View {
     @ObservedObject var model: OnboardingViewModel
 
+    private var palette: LoopPalette {
+        model.profile.appColorScheme.palette
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -20,6 +24,8 @@ struct OnboardingView: View {
             }
         }
         .frame(minWidth: 860, minHeight: 640)
+        .environment(\.loopPalette, palette)
+        .tint(palette.primary)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             model.load()
@@ -51,8 +57,8 @@ struct OnboardingView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .foregroundStyle(model.selectedStep == step ? Color.accentColor : Color.primary)
-                        .background(model.selectedStep == step ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(model.selectedStep == step ? palette.primary : Color.primary)
+                        .background(model.selectedStep == step ? palette.primary.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -84,6 +90,8 @@ struct OnboardingView: View {
             WelcomeStep()
         case .profile:
             ProfileStep(model: model)
+        case .appearance:
+            AppearanceStep(model: model)
         case .messages:
             MessagesStep(model: model)
         case .cloudAI:
@@ -141,6 +149,10 @@ struct OnboardingView: View {
 struct LoopSettingsPanelView: View {
     @ObservedObject var model: OnboardingViewModel
 
+    private var palette: LoopPalette {
+        model.profile.appColorScheme.palette
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -155,6 +167,8 @@ struct LoopSettingsPanelView: View {
                 footer
             }
         }
+        .environment(\.loopPalette, palette)
+        .tint(palette.primary)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             model.load()
@@ -182,8 +196,8 @@ struct LoopSettingsPanelView: View {
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 9)
                         .padding(.vertical, 7)
-                        .foregroundStyle(model.selectedStep == step ? Color.accentColor : Color.primary)
-                        .background(model.selectedStep == step ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(model.selectedStep == step ? palette.primary : Color.primary)
+                        .background(model.selectedStep == step ? palette.primary.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -215,6 +229,8 @@ struct LoopSettingsPanelView: View {
             WelcomeStep()
         case .profile:
             ProfileStep(model: model)
+        case .appearance:
+            AppearanceStep(model: model)
         case .messages:
             MessagesStep(model: model)
         case .cloudAI:
@@ -333,6 +349,49 @@ private struct ProfileStep: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct AppearanceStep: View {
+    @ObservedObject var model: OnboardingViewModel
+
+    private var palette: LoopPalette {
+        model.profile.appColorScheme.palette
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepHeader(
+                title: "Theme",
+                subtitle: "Queue, controls, and status accents."
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                LabeledContent("Color scheme") {
+                    Picker("Color scheme", selection: $model.profile.appColorScheme) {
+                        ForEach(AppColorScheme.allCases, id: \.rawValue) { scheme in
+                            Text(scheme.displayName).tag(scheme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 520)
+                }
+
+                HStack(spacing: 10) {
+                    ForEach(0..<palette.swatches.count, id: \.self) { index in
+                        Circle()
+                            .fill(palette.swatches[index])
+                            .frame(width: 22, height: 22)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(model.profile.appColorScheme.displayName) theme colors")
+            }
+        }
+        .onChange(of: model.profile.appColorScheme) { _, _ in
+            model.saveProfile()
         }
     }
 }
@@ -864,6 +923,8 @@ private struct StepHeader: View {
 }
 
 private struct PrincipleRow: View {
+    @Environment(\.loopPalette) private var palette
+
     var systemImage: String
     var title: String
     var detail: String
@@ -872,7 +933,7 @@ private struct PrincipleRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(palette.primary)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)

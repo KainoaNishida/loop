@@ -445,6 +445,7 @@ final class OnboardingViewModel: ObservableObject {
 enum OnboardingStep: String, CaseIterable, Identifiable {
     case welcome
     case profile
+    case appearance
     case messages
     case cloudAI
     case privacy
@@ -452,7 +453,7 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
     case summary
 
     static var allCases: [OnboardingStep] {
-        return [.welcome, .profile, .messages, .cloudAI, .privacy, .about, .summary]
+        return [.welcome, .profile, .appearance, .messages, .cloudAI, .privacy, .about, .summary]
     }
 
     var id: String { rawValue }
@@ -461,6 +462,7 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
         switch self {
         case .welcome: return "Welcome"
         case .profile: return "Profile"
+        case .appearance: return "Theme"
         case .messages: return "Messages"
         case .cloudAI: return "AI"
         case .privacy: return "Privacy"
@@ -473,6 +475,7 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
         switch self {
         case .welcome: return "sparkles"
         case .profile: return "person.crop.circle"
+        case .appearance: return "paintpalette"
         case .messages: return "message"
         case .cloudAI: return "cloud"
         case .privacy: return "hand.raised"

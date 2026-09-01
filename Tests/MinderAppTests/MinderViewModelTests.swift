@@ -217,6 +217,153 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertTrue(model.statusMessage.contains("Checked Messages"))
     }
 
+    func testPeriodicSyncNotifiesForNewGeneratedAlerts() throws {
+        let store = try makeStore()
+        try saveMessagesImport(
+            store: store,
+            messages: [
+                testMessage(id: "ask", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)
+            ]
+        )
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 1)
+            ),
+            alertNotifier: notifier
+        )
+
+        model.syncAndGenerateSuggestions(reason: .periodic)
+        waitForModelSyncToFinish(model)
+
+        XCTAssertEqual(notifier.notifiedAlertBatches.count, 1)
+        XCTAssertEqual(notifier.notifiedAlertBatches.first?.count, 1)
+        XCTAssertEqual(notifier.notifiedAlertBatches.first?.first?.evidence.messageId, "message-apple-ask")
+    }
+
+    func testPeriodicSyncDoesNotNotifyForUnchangedGeneratedAlerts() throws {
+        let store = try makeStore()
+        try saveMessagesImport(
+            store: store,
+            messages: [
+                testMessage(id: "ask", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)
+            ]
+        )
+        _ = try store.upsertSuggestions([
+            testDraft(messageId: "message-apple-ask")
+        ])
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 1)
+            ),
+            alertNotifier: notifier
+        )
+
+        model.syncAndGenerateSuggestions(reason: .periodic)
+        waitForModelSyncToFinish(model)
+
+        XCTAssertTrue(notifier.notifiedAlertBatches.isEmpty)
+    }
+
+    func testManualSyncDoesNotNotifyForNewGeneratedAlerts() throws {
+        let store = try makeStore()
+        try saveMessagesImport(
+            store: store,
+            messages: [
+                testMessage(id: "ask", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)
+            ]
+        )
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 1)
+            ),
+            alertNotifier: notifier
+        )
+
+        model.generateSuggestions()
+        waitForModelSyncToFinish(model)
+
+        XCTAssertTrue(notifier.notifiedAlertBatches.isEmpty)
+    }
+
+    func testQuietNotificationCadenceSuppressesPeriodicAlertNotification() throws {
+        let store = try makeStore()
+        try store.saveUserProfile(UserProfile(notificationCadence: .quiet, completedOnboardingAt: Date()))
+        try saveMessagesImport(
+            store: store,
+            messages: [
+                testMessage(id: "ask", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)
+            ]
+        )
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 1)
+            ),
+            alertNotifier: notifier
+        )
+
+        model.syncAndGenerateSuggestions(reason: .periodic)
+        waitForModelSyncToFinish(model)
+
+        XCTAssertTrue(notifier.notifiedAlertBatches.isEmpty)
+    }
+
+    func testVisibleQueueSuppressesPeriodicAlertNotification() throws {
+        let store = try makeStore()
+        try saveMessagesImport(
+            store: store,
+            messages: [
+                testMessage(id: "ask", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)
+            ]
+        )
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 1)
+            ),
+            alertNotifier: notifier
+        )
+        model.isQueueInterfaceVisible = { true }
+
+        model.syncAndGenerateSuggestions(reason: .periodic)
+        waitForModelSyncToFinish(model)
+
+        XCTAssertTrue(notifier.notifiedAlertBatches.isEmpty)
+    }
+
+    func testPeriodicSyncSendsOneDigestForMultipleNewAlerts() throws {
+        let store = try makeStore()
+        try saveMessagesImport(
+            store: store,
+            threadMessages: [
+                ("thread-1", "Avery", testMessage(id: "ask-1", threadId: "thread-1", sentAt: Date().addingTimeInterval(-8 * 60 * 60), body: "Can you send the notes?", isFromUser: false)),
+                ("thread-2", "Blake", testMessage(id: "ask-2", threadId: "thread-2", sentAt: Date().addingTimeInterval(-9 * 60 * 60), body: "Could you send the summary?", isFromUser: false))
+            ]
+        )
+        let notifier = FakeAlertNotifier()
+        let model = makeModel(
+            store: store,
+            messagesImporter: FakeAppleMessagesImporter(
+                result: ImportResult(insertedSources: 0, insertedThreads: 0, insertedMessages: 0, skippedMessages: 2)
+            ),
+            alertNotifier: notifier
+        )
+
+        model.syncAndGenerateSuggestions(reason: .periodic)
+        waitForModelSyncToFinish(model)
+
+        XCTAssertEqual(notifier.notifiedAlertBatches.count, 1)
+        XCTAssertEqual(notifier.notifiedAlertBatches.first?.count, 2)
+    }
+
 #if LOOP_INTERNAL_DIAGNOSTICS
     func testRunAppleMessagesDecodeTraceStoresReportAndStatus() throws {
         let store = try makeStore()
@@ -429,9 +576,15 @@ final class MinderViewModelTests: XCTestCase {
 @MainActor
 private func makeModel(
     store: MinderStore,
-    messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter()
+    messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter(),
+    alertNotifier: any LoopAlertNotifying = LoopNoopAlertNotifier()
 ) -> MinderViewModel {
-    MinderViewModel(store: store, permissionService: FakePermissionService(), messagesImporter: messagesImporter)
+    MinderViewModel(
+        store: store,
+        permissionService: FakePermissionService(),
+        messagesImporter: messagesImporter,
+        alertNotifier: alertNotifier
+    )
 }
 
 @MainActor
@@ -468,8 +621,27 @@ private func saveMessagesImport(store: MinderStore, messages: [Message]) throws 
     _ = try store.saveImport(source: source, threads: [thread], messages: messages)
 }
 
+private func saveMessagesImport(
+    store: MinderStore,
+    threadMessages: [(threadId: String, threadTitle: String, message: Message)]
+) throws {
+    let source = ConversationSource(id: "apple", name: "Apple Messages", kind: .appleMessages, lastSyncAt: Date())
+    let threads = threadMessages.map { item in
+        ConversationThread(
+            id: item.threadId,
+            sourceId: source.id,
+            externalId: item.threadId,
+            title: item.threadTitle,
+            participantLabels: [item.threadTitle],
+            lastMessageAt: item.message.sentAt
+        )
+    }
+    _ = try store.saveImport(source: source, threads: threads, messages: threadMessages.map(\.message))
+}
+
 private func testMessage(
     id: String,
+    threadId: String = "thread-1",
     sentAt: Date = Date(timeIntervalSince1970: 1_800_000_000),
     body: String,
     isFromUser: Bool
@@ -477,7 +649,7 @@ private func testMessage(
     Message(
         id: "message-apple-\(id)",
         sourceId: "apple",
-        threadId: "thread-1",
+        threadId: threadId,
         externalId: id,
         senderLabel: isFromUser ? "Me" : "Avery",
         sentAt: sentAt,
@@ -545,6 +717,15 @@ private struct FakePermissionService: PermissionServicing {
         PermissionHealth(kind: .reminders, state: .available, detail: "ok")
     }
     func openSystemSettings(for kind: PermissionKind) async -> Bool { true }
+}
+
+@MainActor
+private final class FakeAlertNotifier: LoopAlertNotifying {
+    private(set) var notifiedAlertBatches: [[Suggestion]] = []
+
+    func notifyNewAlerts(_ alerts: [Suggestion]) async {
+        notifiedAlertBatches.append(alerts)
+    }
 }
 
 private final class FakeAppleMessagesImporter: AppleMessagesImporting {

@@ -484,7 +484,8 @@ final class ImporterStoreTests: XCTestCase {
             quietHoursStartMinutes: 21 * 60,
             quietHoursEndMinutes: 8 * 60,
             sourcePriority: [.appleMessages, .sample],
-            cloudAIEnabled: false
+            cloudAIEnabled: false,
+            appColorScheme: .forest
         )
 
         try store.saveUserProfile(profile)
@@ -492,17 +493,73 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(saved.displayName, "Kainoa")
         XCTAssertEqual(saved.notificationCadence, .dailyDigest)
         XCTAssertEqual(saved.sourcePriority, [.appleMessages, .sample])
+        XCTAssertEqual(saved.appColorScheme, .forest)
         XCTAssertFalse(saved.hasCompletedOnboarding)
         XCTAssertFalse(try store.hasCompletedOnboarding())
 
         profile.cloudAIEnabled = true
+        profile.appColorScheme = .plum
         profile.completedOnboardingAt = Date(timeIntervalSince1970: 1_800_000_000)
         try store.saveUserProfile(profile)
 
         let completed = try XCTUnwrap(try store.fetchUserProfile())
         XCTAssertTrue(completed.cloudAIEnabled)
+        XCTAssertEqual(completed.appColorScheme, .plum)
         XCTAssertTrue(completed.hasCompletedOnboarding)
         XCTAssertTrue(try store.hasCompletedOnboarding())
+    }
+
+    func testUserProfileMigrationDefaultsAppColorScheme() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MinderCoreTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = directory.appendingPathComponent("test.sqlite")
+        let database = try SQLiteDatabase(url: databaseURL)
+        let now = DateCoding.iso8601.string(from: Date(timeIntervalSince1970: 1_800_000_000))
+        try database.execute(
+            """
+            CREATE TABLE user_profiles (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                time_zone_identifier TEXT NOT NULL,
+                notification_cadence TEXT NOT NULL,
+                quiet_hours_start_minutes INTEGER NOT NULL,
+                quiet_hours_end_minutes INTEGER NOT NULL,
+                source_priority TEXT NOT NULL,
+                cloud_ai_enabled INTEGER NOT NULL,
+                completed_onboarding_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        try database.execute(
+            """
+            INSERT INTO user_profiles (
+                id, display_name, time_zone_identifier, notification_cadence,
+                quiet_hours_start_minutes, quiet_hours_end_minutes, source_priority,
+                cloud_ai_enabled, completed_onboarding_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text(UserProfile.defaultID),
+                .text("Kainoa"),
+                .text("America/Los_Angeles"),
+                .text(NotificationCadence.hourlyDigest.rawValue),
+                .int(22 * 60),
+                .int(7 * 60),
+                .text("[\"appleMessages\",\"sample\"]"),
+                .int(0),
+                .null,
+                .text(now),
+                .text(now)
+            ]
+        )
+
+        let store = try MinderStore(databaseURL: databaseURL)
+        let migrated = try XCTUnwrap(try store.fetchUserProfile())
+        XCTAssertEqual(migrated.appColorScheme, .ocean)
     }
 
     func testPermissionHealthUpsertAndTransitionsPersist() throws {
@@ -952,9 +1009,12 @@ final class ImporterStoreTests: XCTestCase {
         _ = try await engine.generateFromStoredMessages()
         let suggestions = try store.fetchSuggestions()
 
-        XCTAssertEqual(suggestions.count, 1)
-        XCTAssertEqual(suggestions.first?.type, .deadline)
-        XCTAssertEqual(suggestions.first?.evidence.messageId, "message-test-source-new-urgent")
+        XCTAssertEqual(suggestions.count, 2)
+        let activeSuggestions = try store.fetchSuggestions(includeCompleted: false)
+        XCTAssertEqual(activeSuggestions.count, 1)
+        XCTAssertEqual(activeSuggestions.first?.type, .deadline)
+        XCTAssertEqual(activeSuggestions.first?.evidence.messageId, "message-test-source-new-urgent")
+        XCTAssertEqual(suggestions.first { $0.evidence.messageId == "message-test-source-first-ask" }?.state, .superseded)
     }
 
     func testNormalGenerationPreservesCompletedSuggestionState() async throws {
@@ -983,6 +1043,67 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(saved.state, .completed)
         XCTAssertEqual(second.savedSuggestions.first?.state, .completed)
         XCTAssertEqual(second.activeSavedCount, 0)
+    }
+
+    func testNewEvidenceInCompletedThreadCreatesNewActiveSuggestion() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let store = try makeStore()
+        let firstDraft = testDraft(
+            type: .unansweredQuestion,
+            confidence: 0.84,
+            messageId: "message-test-source-first-ask",
+            sourceTimestamp: now.addingTimeInterval(-8 * 60 * 60)
+        )
+        let firstSuggestion = try XCTUnwrap(try store.upsertSuggestions([firstDraft]).first)
+        try store.updateSuggestionState(id: firstSuggestion.id, state: .completed)
+
+        let secondDraft = testDraft(
+            type: .unansweredQuestion,
+            confidence: 0.88,
+            messageId: "message-test-source-second-ask",
+            sourceTimestamp: now.addingTimeInterval(-30 * 60)
+        )
+        _ = try store.upsertSuggestions([secondDraft])
+
+        let suggestions = try store.fetchSuggestions()
+        let activeSuggestions = try store.fetchSuggestions(includeCompleted: false)
+
+        XCTAssertEqual(suggestions.count, 2)
+        XCTAssertEqual(suggestions.first { $0.evidence.messageId == firstDraft.messageId }?.state, .completed)
+        XCTAssertEqual(activeSuggestions.count, 1)
+        XCTAssertEqual(activeSuggestions.first?.evidence.messageId, secondDraft.messageId)
+        XCTAssertEqual(activeSuggestions.first?.state, .new)
+    }
+
+    func testLegacyCompletedSuggestionWithSameEvidenceDoesNotResurface() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MinderCoreTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = directory.appendingPathComponent("test.sqlite")
+        let store = try MinderStore(databaseURL: databaseURL)
+        let database = try SQLiteDatabase(url: databaseURL)
+        let draft = testDraft(
+            type: .staleReply,
+            confidence: 0.80,
+            messageId: "legacy-message",
+            sourceTimestamp: now.addingTimeInterval(-60)
+        )
+        try insertLegacySuggestion(
+            database,
+            id: legacySuggestionID(sourceId: draft.sourceId, threadId: draft.threadId),
+            state: .completed,
+            updatedAt: now,
+            type: draft.type,
+            messageId: draft.messageId
+        )
+
+        let saved = try XCTUnwrap(try store.upsertSuggestions([draft]).first)
+
+        XCTAssertEqual(saved.state, .completed)
+        XCTAssertEqual(saved.id, legacySuggestionID(sourceId: draft.sourceId, threadId: draft.threadId))
+        XCTAssertEqual(try store.fetchSuggestions(includeCompleted: false).count, 0)
+        XCTAssertEqual(try store.fetchSuggestions(includeCompleted: true).count, 1)
     }
 
     func testManualQueueItemLifecyclePersistsCompletionUndoAndDelete() throws {
@@ -1104,13 +1225,13 @@ final class ImporterStoreTests: XCTestCase {
         )
 
         _ = try await engine.generateFromStoredMessages()
-        let allSuggestions = try store.fetchSuggestions()
+        let activeSuggestions = try store.fetchSuggestions(includeCompleted: false)
 
-        XCTAssertEqual(try store.fetchSuggestions(includeCompleted: false).count, 1)
-        XCTAssertEqual(allSuggestions.first?.state, .new)
-        XCTAssertEqual(allSuggestions.first?.type, .followUpNudge)
-        XCTAssertEqual(allSuggestions.first?.confidence, 0.16)
-        XCTAssertEqual(allSuggestions.first?.evidence.messageId, "message-test-source-user-reply")
+        XCTAssertEqual(activeSuggestions.count, 1)
+        XCTAssertEqual(activeSuggestions.first?.state, .new)
+        XCTAssertEqual(activeSuggestions.first?.type, .followUpNudge)
+        XCTAssertEqual(activeSuggestions.first?.confidence, 0.16)
+        XCTAssertEqual(activeSuggestions.first?.evidence.messageId, "message-test-source-user-reply")
     }
 
     func testOlderActiveThreadSuggestionsAreSupersededButTerminalStatesRemain() throws {
@@ -1958,7 +2079,9 @@ private func insertLegacySuggestion(
     _ database: SQLiteDatabase,
     id: String,
     state: SuggestionState,
-    updatedAt: Date
+    updatedAt: Date,
+    type: SuggestionType = .staleReply,
+    messageId: String = "legacy-message"
 ) throws {
     try database.execute(
         """
@@ -1971,14 +2094,14 @@ private func insertLegacySuggestion(
         """,
         [
             .text(id),
-            .text(SuggestionType.staleReply.rawValue),
+            .text(type.rawValue),
             .text(state.rawValue),
             .text("Legacy suggestion"),
             .text("Legacy action"),
             .null,
             .text("test-source"),
             .text("thread-1"),
-            .text("legacy-message"),
+            .text(messageId),
             .text("Test Messages"),
             .text("Avery"),
             .text("Legacy evidence"),
@@ -1989,6 +2112,10 @@ private func insertLegacySuggestion(
             .null
         ]
     )
+}
+
+private func legacySuggestionID(sourceId: String, threadId: String) -> String {
+    "suggestion-current-\([sourceId, threadId].joined(separator: "|").stableHash)"
 }
 
 private func requestBodyData(from request: URLRequest) -> Data? {

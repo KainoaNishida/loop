@@ -29,7 +29,9 @@ private enum LoopTheme {
         light: NSColor(calibratedRed: 233 / 255, green: 233 / 255, blue: 235 / 255, alpha: 1),
         dark: NSColor(calibratedRed: 58 / 255, green: 58 / 255, blue: 60 / 255, alpha: 1)
     )
-    static let outgoingBubble = blue
+    static let iMessageBubble = Color(red: 0.0, green: 0.48, blue: 1.0)
+    static let smsBubble = Color(red: 0.16, green: 0.68, blue: 0.27)
+    static let outgoingBubble = iMessageBubble
     static let completedFill = dynamicColor(
         light: NSColor(calibratedRed: 238 / 255, green: 248 / 255, blue: 241 / 255, alpha: 1),
         dark: NSColor(calibratedRed: 25 / 255, green: 54 / 255, blue: 38 / 255, alpha: 1)
@@ -50,6 +52,13 @@ struct InboxView: View {
     @ObservedObject var model: MinderViewModel
     @ObservedObject var settingsModel: OnboardingViewModel
 
+    private var palette: LoopPalette {
+        if model.selectedTab == .settings {
+            return settingsModel.profile.appColorScheme.palette
+        }
+        return (model.profile?.appColorScheme ?? settingsModel.profile.appColorScheme).palette
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -62,6 +71,8 @@ struct InboxView: View {
             }
         }
         .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: 0, idealHeight: 620, maxHeight: .infinity)
+        .environment(\.loopPalette, palette)
+        .tint(palette.primary)
         .background(LoopTheme.pageFill)
     }
 
@@ -70,7 +81,7 @@ struct InboxView: View {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(LoopTheme.blue)
+                        .fill(palette.primary)
                     Image(systemName: "checklist.checked")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
@@ -81,6 +92,10 @@ struct InboxView: View {
                     Text("Loop")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(LoopTheme.text)
+                    Text(lastUpdatedText)
+                        .font(.caption)
+                        .foregroundStyle(LoopTheme.secondaryText)
+                        .lineLimit(1)
                 }
             }
 
@@ -103,19 +118,19 @@ struct InboxView: View {
                     Button {
                         model.generateSuggestions()
                     } label: {
-                        Label("Generate", systemImage: "wand.and.stars")
+                        Label("Refresh", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(LoopTheme.blue)
+                    .tint(palette.primary)
                     .disabled(!model.canGenerateSuggestions)
-                    .help("Generate suggestions")
+                    .help("Refresh messages and alerts")
                 }
 
                 Button {
                     model.toggleSettings()
                 } label: {
                     Image(systemName: "gearshape")
-                        .foregroundStyle(model.selectedTab == .settings ? LoopTheme.blue : LoopTheme.secondaryText)
+                        .foregroundStyle(model.selectedTab == .settings ? palette.primary : LoopTheme.secondaryText)
                 }
                 .help(model.selectedTab == .settings ? "Close settings" : "Settings")
 
@@ -212,9 +227,19 @@ struct InboxView: View {
 
     private var messagesFooterText: String {
         if let source = model.appleMessagesSource, let sync = source.lastSyncAt {
-            return "\(model.appleMessagesCount) messages · \(sync.relativeLabel)"
+            return "\(model.appleMessagesCount) messages · Last updated \(sync.relativeLabel)"
         }
-        return "\(model.appleMessagesCount) messages"
+        return "\(model.appleMessagesCount) messages · Not refreshed yet"
+    }
+
+    private var lastUpdatedText: String {
+        if let source = model.appleMessagesSource, let sync = source.lastSyncAt {
+            return "Last updated \(sync.relativeLabel)"
+        }
+        if model.appleMessagesCount > 0 {
+            return "Messages loaded · refresh status unknown"
+        }
+        return "Not refreshed yet"
     }
 }
 
@@ -239,6 +264,8 @@ private struct QueueFooterPageIndicator: View {
 }
 
 private struct QueueArrowButton: View {
+    @Environment(\.loopPalette) private var palette
+
     var systemImage: String
     var help: String
     var isEnabled: Bool
@@ -248,7 +275,7 @@ private struct QueueArrowButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.bold))
-                .foregroundStyle(isEnabled ? LoopTheme.blue : LoopTheme.tertiaryText)
+                .foregroundStyle(isEnabled ? palette.primary : LoopTheme.tertiaryText)
                 .frame(width: 42, height: 88)
                 .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
@@ -267,10 +294,14 @@ private struct QueueArrowButton: View {
 }
 
 private struct LoopSuggestionCardView: View {
+    @Environment(\.loopPalette) private var palette
+
     var card: LoopSuggestionCard
     var complete: () -> Void
 
     var body: some View {
+        let tint = card.suggestion.type.tint(in: palette)
+
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(card.suggestion.evidence.threadTitle)
@@ -290,7 +321,7 @@ private struct LoopSuggestionCardView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                ConversationPreview(messages: card.recentMessages)
+                ConversationPreview(messages: card.recentMessages, platform: card.messagePlatform)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -299,12 +330,12 @@ private struct LoopSuggestionCardView: View {
             .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(card.suggestion.type.tint.opacity(0.22), lineWidth: 1)
+                    .stroke(tint.opacity(0.22), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
 
             QueueCompletionButton(
-                tint: card.suggestion.type.tint,
+                tint: tint,
                 isDisabled: card.suggestion.state == .completed,
                 action: complete
             )
@@ -314,10 +345,14 @@ private struct LoopSuggestionCardView: View {
 }
 
 private struct ManualQueueItemCardView: View {
+    @Environment(\.loopPalette) private var palette
+
     var item: ManualQueueItem
     var complete: () -> Void
 
     var body: some View {
+        let tint = item.kind.tint(in: palette)
+
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
                 ScrollView {
@@ -343,11 +378,11 @@ private struct ManualQueueItemCardView: View {
             .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(item.kind.tint.opacity(0.20), lineWidth: 1)
+                    .stroke(tint.opacity(0.20), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
 
-            QueueCompletionButton(tint: item.kind.tint, action: complete)
+            QueueCompletionButton(tint: tint, action: complete)
         }
         .frame(maxWidth: .infinity)
     }
@@ -373,6 +408,7 @@ private struct QueueCompletionButton: View {
 }
 
 private struct ManualQueueComposerView: View {
+    @Environment(\.loopPalette) private var palette
     @ObservedObject var model: MinderViewModel
     @State private var draftTitle = ""
     @State private var draftBody = ""
@@ -400,7 +436,7 @@ private struct ManualQueueComposerView: View {
                     model.saveManualItem(kind: .note, title: draftTitle, body: draftBody)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(LoopTheme.blue)
+                .tint(palette.primary)
                 .controlSize(.small)
                 .disabled(!canSave || model.isWorking)
             }
@@ -440,7 +476,7 @@ private struct ManualQueueComposerView: View {
         .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(LoopTheme.blue.opacity(0.25), lineWidth: 1)
+                .stroke(palette.primary.opacity(0.25), lineWidth: 1)
         }
         .onAppear {
             draftTitle = model.manualDraftTitle
@@ -450,6 +486,8 @@ private struct ManualQueueComposerView: View {
 }
 
 private struct RecentlyCompletedSection: View {
+    @Environment(\.loopPalette) private var palette
+
     var items: [LoopCompletedQueueItem]
     var undo: (LoopCompletedQueueItem) -> Void
 
@@ -464,7 +502,7 @@ private struct RecentlyCompletedSection: View {
                 ForEach(items) { item in
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(LoopTheme.green)
+                            .foregroundStyle(palette.completion)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .font(.callout.weight(.medium))
@@ -479,13 +517,13 @@ private struct RecentlyCompletedSection: View {
                             undo(item)
                         }
                         .controlSize(.small)
-                        .tint(LoopTheme.green)
+                        .tint(palette.completion)
                     }
                     .padding(10)
                     .background(LoopTheme.completedFill, in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(LoopTheme.green.opacity(0.18), lineWidth: 1)
+                            .stroke(palette.completion.opacity(0.18), lineWidth: 1)
                     }
                 }
             }
@@ -495,6 +533,7 @@ private struct RecentlyCompletedSection: View {
 
 private struct ConversationPreview: View {
     var messages: [Message]
+    var platform: LoopMessagePlatform = .unknown
 
     var body: some View {
         Group {
@@ -505,7 +544,7 @@ private struct ConversationPreview: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(messages) { message in
-                                MessageBubbleRow(message: message)
+                                MessageBubbleRow(message: message, platform: platform)
                                     .id(message.id)
                             }
                         }
@@ -548,6 +587,7 @@ private struct ConversationPreview: View {
 
 private struct MessageBubbleRow: View {
     var message: Message
+    var platform: LoopMessagePlatform
 
     var body: some View {
         let content = MessageBubbleContent(body: message.body)
@@ -571,7 +611,7 @@ private struct MessageBubbleRow: View {
                     .foregroundStyle(foregroundStyle(for: content))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(message.isFromUser ? LoopTheme.outgoingBubble : LoopTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
+                    .background(message.isFromUser ? platform.outgoingBubble : LoopTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
 
                 if !message.isFromUser { Spacer(minLength: 64) }
             }
@@ -589,6 +629,17 @@ private struct MessageBubbleRow: View {
             return .white
         }
         return content.isPlaceholder ? LoopTheme.secondaryText : LoopTheme.text
+    }
+}
+
+private extension LoopMessagePlatform {
+    var outgoingBubble: Color {
+        switch self {
+        case .iMessage, .unknown:
+            return LoopTheme.iMessageBubble
+        case .smsOrRCS:
+            return LoopTheme.smsBubble
+        }
     }
 }
 
@@ -640,6 +691,7 @@ private struct MessageBubbleContent {
 }
 
 struct EmptyStateView: View {
+    @Environment(\.loopPalette) private var palette
     @ObservedObject var model: MinderViewModel
 
     var body: some View {
@@ -648,7 +700,7 @@ struct EmptyStateView: View {
                 .font(.system(size: 36, weight: .medium))
                 .foregroundStyle(.white)
                 .frame(width: 64, height: 64)
-                .background(LoopTheme.blue, in: RoundedRectangle(cornerRadius: 16))
+                .background(palette.primary, in: RoundedRectangle(cornerRadius: 16))
             Text("Nothing to complete")
                 .font(.headline)
                 .foregroundStyle(LoopTheme.text)
@@ -660,10 +712,10 @@ struct EmptyStateView: View {
             Button {
                 model.generateSuggestions()
             } label: {
-                Text("Generate")
+                Text("Refresh")
             }
             .buttonStyle(.borderedProminent)
-            .tint(LoopTheme.blue)
+            .tint(palette.primary)
             .controlSize(.small)
             .disabled(!model.canGenerateSuggestions)
         }
@@ -694,7 +746,7 @@ private struct GeminiDiagnosticsView: View {
                         .foregroundStyle(.secondary)
                     Text("No diagnostics recorded")
                         .font(.headline)
-                    Text("Run a Messages trace, run a Messages text check, or Generate with Gemini enabled to record diagnostics.")
+                    Text("Run a Messages trace, run a Messages text check, or refresh with Gemini enabled to record diagnostics.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1126,17 +1178,21 @@ private struct GeminiDiagnosticRow: View {
 #endif
 
 struct SuggestionRow: View {
+    @Environment(\.loopPalette) private var palette
+
     var suggestion: Suggestion
     var isSelected: Bool
 
     var body: some View {
+        let tint = suggestion.type.tint(in: palette)
+
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(suggestion.type.tint.opacity(0.16))
+                    .fill(tint.opacity(0.16))
                 Image(systemName: suggestion.type.systemImage)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(suggestion.type.tint)
+                    .foregroundStyle(tint)
             }
             .frame(width: 30, height: 30)
 
@@ -1181,19 +1237,19 @@ struct SuggestionRow: View {
         .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(isSelected ? palette.primary.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var rowBackground: Color {
-        isSelected ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor)
+        isSelected ? palette.primary.opacity(0.12) : Color(nsColor: .controlBackgroundColor)
     }
 
     private var stateColor: Color {
         switch suggestion.state {
         case .new, .viewed:
-            return .accentColor
+            return palette.primary
         case .confirmed, .completed:
             return .green
         case .snoozed:
@@ -1207,6 +1263,8 @@ struct SuggestionRow: View {
 }
 
 struct SuggestionDetailView: View {
+    @Environment(\.loopPalette) private var palette
+
     @ObservedObject var model: MinderViewModel
     var suggestion: Suggestion?
 
@@ -1242,7 +1300,7 @@ struct SuggestionDetailView: View {
     private func detailHeader(_ suggestion: Suggestion) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                StatusPill(text: suggestion.type.displayName, systemImage: suggestion.type.systemImage, tint: suggestion.type.tint)
+                StatusPill(text: suggestion.type.displayName, systemImage: suggestion.type.systemImage, tint: suggestion.type.tint(in: palette))
                 StatusPill(text: suggestion.state.displayName, systemImage: suggestion.state.systemImage, tint: suggestion.state.tint)
                 Spacer()
             }
@@ -1263,7 +1321,7 @@ struct SuggestionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 ProgressView(value: suggestion.confidence)
-                    .tint(suggestion.confidence >= 0.85 ? .green : .accentColor)
+                    .tint(suggestion.confidence >= 0.85 ? .green : palette.primary)
             }
         }
     }
@@ -1484,18 +1542,18 @@ private extension SuggestionType {
         }
     }
 
-    var tint: Color {
+    func tint(in palette: LoopPalette) -> Color {
         switch self {
         case .deadline, .calendarEvent:
-            return LoopTheme.blue
+            return palette.primary
         case .unansweredQuestion, .staleReply:
-            return LoopTheme.orange
+            return palette.warning
         case .reminder, .promisedTask:
-            return LoopTheme.teal
+            return palette.tertiary
         case .importantContext:
-            return LoopTheme.purple
+            return palette.secondary
         case .followUpNudge:
-            return LoopTheme.green
+            return palette.completion
         }
     }
 }
@@ -1510,12 +1568,12 @@ private extension ManualQueueItemKind {
         }
     }
 
-    var tint: Color {
+    func tint(in palette: LoopPalette) -> Color {
         switch self {
         case .todo:
-            return LoopTheme.green
+            return palette.completion
         case .note:
-            return LoopTheme.purple
+            return palette.secondary
         }
     }
 }

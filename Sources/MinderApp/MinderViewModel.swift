@@ -41,9 +41,27 @@ enum LoopMainTab: String, CaseIterable, Identifiable {
 struct LoopSuggestionCard: Identifiable {
     var suggestion: Suggestion
     var recentMessages: [Message] = []
+    var messagePlatform: LoopMessagePlatform = .unknown
 
     var id: String {
         suggestion.id
+    }
+}
+
+enum LoopMessagePlatform {
+    case iMessage
+    case smsOrRCS
+    case unknown
+
+    init(threadExternalId: String?) {
+        let normalized = threadExternalId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if normalized.hasPrefix("imessage;") {
+            self = .iMessage
+        } else if normalized.hasPrefix("sms;") || normalized.hasPrefix("rcs;") {
+            self = .smsOrRCS
+        } else {
+            self = .unknown
+        }
     }
 }
 
@@ -125,6 +143,20 @@ enum LoopSuggestionSyncReason: Equatable {
     }
 }
 
+private struct LoopAlertIdentity: Hashable {
+    var sourceId: String
+    var threadId: String
+    var type: SuggestionType
+    var messageId: String
+
+    init(_ suggestion: Suggestion) {
+        sourceId = suggestion.sourceId
+        threadId = suggestion.threadId
+        type = suggestion.type
+        messageId = suggestion.evidence.messageId
+    }
+}
+
 @MainActor
 final class MinderViewModel: ObservableObject {
     @Published private(set) var suggestions: [Suggestion] = []
@@ -159,11 +191,13 @@ final class MinderViewModel: ObservableObject {
     @Published var isWorking = false
     @Published private(set) var isGeneratingSuggestions = false
     var showQueueWindow: (() -> Void)?
+    var isQueueInterfaceVisible: () -> Bool = { false }
 
     private let store: MinderStore
     private let permissionCoordinator: OnboardingPermissionCoordinator
     private let importer = ConversationImporter()
     private let messagesImporter: any AppleMessagesImporting
+    private let alertNotifier: any LoopAlertNotifying
     private static let prototypeSourceKinds: Set<SourceKind> = [.appleMessages]
     static let queuePageSize = 1
     static let suggestionPreviewMessageLimit = 15
@@ -171,11 +205,13 @@ final class MinderViewModel: ObservableObject {
     init(
         store: MinderStore,
         permissionService: PermissionServicing,
-        messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter()
+        messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter(),
+        alertNotifier: any LoopAlertNotifying = LoopNoopAlertNotifier()
     ) {
         self.store = store
         self.permissionCoordinator = OnboardingPermissionCoordinator(store: store, service: permissionService)
         self.messagesImporter = messagesImporter
+        self.alertNotifier = alertNotifier
     }
 
     var canGenerateSuggestions: Bool {
@@ -308,7 +344,7 @@ final class MinderViewModel: ObservableObject {
                 selectedSuggestion = activeSuggestions.first
             }
             if suggestions.isEmpty && statusMessage == "Ready." {
-                statusMessage = messages.isEmpty ? "Generate suggestions to check Messages." : "Generate suggestions from Messages."
+                statusMessage = messages.isEmpty ? "Refresh to check Messages." : "Refresh Messages for alerts."
             }
             try refreshQueuePresentation()
         } catch {
@@ -461,8 +497,10 @@ final class MinderViewModel: ObservableObject {
                 self.isGeneratingSuggestions = false
             }
             do {
+                let activeAlertsBeforeSync = try self.activeAlertIdentitiesFromStore()
                 let importResult = try await self.importRecentMessages()
                 let (generated, mode, fallbackError) = try await self.generateStoredSuggestions()
+                let activeAlertsAfterSync = try self.activeGeneratedAlertsFromStore()
                 self.lastSyncAt = Date()
                 self.statusMessage = "Checked Messages: \(importResult.insertedMessages) new, \(importResult.skippedMessages) unchanged. \(self.generationSummary(generated, mode: mode))."
                 if generated.rankedDraftCount == 0 {
@@ -474,8 +512,13 @@ final class MinderViewModel: ObservableObject {
                     self.statusMessage += " Cloud AI fell back locally: \(fallbackError.localizedDescription)"
                 }
                 self.refresh()
+                await self.notifyForNewPeriodicAlerts(
+                    reason: reason,
+                    previousIdentities: activeAlertsBeforeSync,
+                    activeAlertsAfterSync: activeAlertsAfterSync
+                )
             } catch {
-                self.statusMessage = "Generate failed: \(error.localizedDescription)"
+                self.statusMessage = "Refresh failed: \(error.localizedDescription)"
                 self.refresh()
             }
         }
@@ -520,7 +563,7 @@ final class MinderViewModel: ObservableObject {
     func clearSuggestions() {
         perform("Clearing suggestions...") {
             try self.store.deleteSuggestions()
-            self.statusMessage = "Cleared generated suggestions. Click Generate to create new alerts."
+            self.statusMessage = "Cleared generated suggestions. Click Refresh to create new alerts."
             self.refresh()
         }
     }
@@ -688,9 +731,11 @@ final class MinderViewModel: ObservableObject {
 
     private func makeSuggestionCards(from suggestions: [Suggestion]) throws -> [LoopSuggestionCard] {
         try suggestions.map { suggestion in
+            let thread = threads.first { $0.id == suggestion.threadId }
             return LoopSuggestionCard(
                 suggestion: suggestion,
-                recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: Self.suggestionPreviewMessageLimit)
+                recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: Self.suggestionPreviewMessageLimit),
+                messagePlatform: LoopMessagePlatform(threadExternalId: thread?.externalId)
             )
         }
     }
@@ -728,6 +773,40 @@ final class MinderViewModel: ObservableObject {
         return SuggestionType.allCases.map { type in
             LoopAlertLegendItem(type: type, count: countsByType[type, default: 0])
         }
+    }
+
+    private func activeAlertIdentitiesFromStore() throws -> Set<LoopAlertIdentity> {
+        Set(try activeGeneratedAlertsFromStore().map(LoopAlertIdentity.init))
+    }
+
+    private func activeGeneratedAlertsFromStore() throws -> [Suggestion] {
+        let storedSources = try store.fetchSources()
+        let sourceById = Dictionary(uniqueKeysWithValues: storedSources.map { ($0.id, $0) })
+        return try store.fetchSuggestions(includeCompleted: false)
+            .filter { suggestion in
+                if let source = sourceById[suggestion.sourceId] {
+                    return Self.prototypeSourceKinds.contains(source.kind)
+                }
+                return suggestion.evidence.sourceApp.localizedCaseInsensitiveContains("messages")
+            }
+            .sorted(by: isHigherPriorityAlert)
+    }
+
+    private func notifyForNewPeriodicAlerts(
+        reason: LoopSuggestionSyncReason,
+        previousIdentities: Set<LoopAlertIdentity>,
+        activeAlertsAfterSync: [Suggestion]
+    ) async {
+        guard reason == .periodic else { return }
+        guard profile?.notificationCadence != .quiet else { return }
+        guard !isQueueInterfaceVisible() else { return }
+
+        let newAlerts = activeAlertsAfterSync.filter { suggestion in
+            !previousIdentities.contains(LoopAlertIdentity(suggestion))
+        }
+        guard !newAlerts.isEmpty else { return }
+
+        await alertNotifier.notifyNewAlerts(newAlerts)
     }
 
     private func generateStoredSuggestions() async throws -> (generated: SuggestionGenerationReport, mode: String, fallbackError: Error?) {
@@ -1236,7 +1315,7 @@ private enum GeminiDebugError: Error, LocalizedError {
         switch self {
 #if LOOP_INTERNAL_DIAGNOSTICS
         case .noDiagnostics:
-            return "No Gemini diagnostics are available yet. Click Generate with Gemini enabled first."
+            return "No Gemini diagnostics are available yet. Click Refresh with Gemini enabled first."
 #endif
         case .missingGeminiConfig:
             return "GEMINI_API_KEY is missing."
