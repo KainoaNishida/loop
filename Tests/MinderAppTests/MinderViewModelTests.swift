@@ -152,45 +152,6 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(restored.state, .active)
     }
 
-    func testSavingManualNoteThroughViewModelPersistsClearsComposerAndJumpsToFront() throws {
-        let store = try makeStore()
-        let baseDate = Date().addingTimeInterval(-10_000)
-        for index in 1...3 {
-            try store.upsertManualQueueItem(ManualQueueItem(
-                id: "older-note-\(index)",
-                kind: .note,
-                title: "Older note \(index)",
-                createdAt: baseDate.addingTimeInterval(TimeInterval(index)),
-                updatedAt: baseDate.addingTimeInterval(TimeInterval(index))
-            ))
-        }
-        let model = makeModel(store: store)
-        model.refresh()
-        model.goToLastQueuePage()
-        XCTAssertEqual(model.queuePageIndex, 2)
-
-        model.beginManualItem()
-        XCTAssertEqual(model.manualDraftKind, .note)
-        model.saveManualItem(kind: .note, title: "  Launch checklist  ", body: "  Confirm tester notes work.  ")
-
-        XCTAssertFalse(model.isComposingManualItem)
-        XCTAssertFalse(model.isWorking)
-        XCTAssertEqual(model.manualDraftKind, .note)
-        XCTAssertEqual(model.manualDraftTitle, "")
-        XCTAssertEqual(model.manualDraftBody, "")
-        XCTAssertEqual(model.queuePageIndex, 0)
-
-        let saved = try XCTUnwrap(try store.fetchManualQueueItems().first)
-        XCTAssertEqual(saved.kind, .note)
-        XCTAssertEqual(saved.title, "Launch checklist")
-        XCTAssertEqual(saved.body, "Confirm tester notes work.")
-
-        guard case .manual(let queuedItem) = try XCTUnwrap(model.queueItems.first) else {
-            return XCTFail("Expected saved note to appear in the queue.")
-        }
-        XCTAssertEqual(queuedItem.id, saved.id)
-    }
-
     func testGenerateSuggestionsRunsEvenWhenOtherWorkFlagIsActive() throws {
         let store = try makeStore()
         try saveMessagesImport(

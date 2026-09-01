@@ -20,7 +20,6 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private var queueWindow: NSWindow?
     private var selectedTabCancellable: AnyCancellable?
     private var queueItemsCancellable: AnyCancellable?
-    private var queueComposerCancellable: AnyCancellable?
 
     static func main() {
         let app = NSApplication.shared
@@ -90,14 +89,6 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
                         self?.updatePopoverContentSize()
                     }
                 }
-            queueComposerCancellable = model.$isComposingManualItem
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in
-                    Task { @MainActor in
-                        self?.updatePopoverContentSize()
-                    }
-                }
-
             model.refresh()
             model.refreshPermissionHealth()
             if model.profile?.hasCompletedOnboarding != true {

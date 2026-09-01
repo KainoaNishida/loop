@@ -182,10 +182,6 @@ final class MinderViewModel: ObservableObject {
 #if LOOP_INTERNAL_DIAGNOSTICS
     @Published var isShowingGeminiDiagnostics = false
 #endif
-    @Published var isComposingManualItem = false
-    @Published var manualDraftKind: ManualQueueItemKind = .note
-    @Published var manualDraftTitle = ""
-    @Published var manualDraftBody = ""
     @Published var selectedTab: LoopMainTab = .queue
     @Published var statusMessage: String = "Ready."
     @Published var isWorking = false
@@ -297,10 +293,6 @@ final class MinderViewModel: ObservableObject {
             .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(5)
             .map { $0 }
-    }
-
-    var canSaveManualItem: Bool {
-        !manualDraftTitle.loopCollapsedWhitespace.isEmpty
     }
 
     var appleMessagesSource: ConversationSource? {
@@ -610,47 +602,6 @@ final class MinderViewModel: ObservableObject {
             try self.store.updateManualQueueItemState(id: manualItem.id, state: .active)
             self.statusMessage = "Restored \(manualItem.title) to the queue."
             self.refresh()
-        }
-    }
-
-    func beginManualItem(kind: ManualQueueItemKind = .note) {
-        manualDraftKind = kind
-        manualDraftTitle = ""
-        manualDraftBody = ""
-        isComposingManualItem = true
-    }
-
-    func cancelManualItem() {
-        isComposingManualItem = false
-        manualDraftTitle = ""
-        manualDraftBody = ""
-    }
-
-    func saveManualItem() {
-        saveManualItem(kind: manualDraftKind, title: manualDraftTitle, body: manualDraftBody)
-    }
-
-    func saveManualItem(kind: ManualQueueItemKind, title: String, body: String) {
-        guard !title.loopCollapsedWhitespace.isEmpty else {
-            statusMessage = "Add a title before saving."
-            return
-        }
-
-        do {
-            let item = try store.createManualQueueItem(
-                kind: kind,
-                title: title,
-                body: body
-            )
-            isComposingManualItem = false
-            manualDraftKind = .note
-            manualDraftTitle = ""
-            manualDraftBody = ""
-            queuePageIndex = 0
-            statusMessage = "Added \(item.kind.displayName.lowercased())."
-            refresh()
-        } catch {
-            statusMessage = "Could not save item: \(error.localizedDescription)"
         }
     }
 
@@ -1290,12 +1241,6 @@ final class MinderViewModel: ObservableObject {
             return suggestion.evidence.sourceApp.localizedCaseInsensitiveContains("messages")
         }
         return Self.prototypeSourceKinds.contains(source.kind)
-    }
-}
-
-private extension String {
-    var loopCollapsedWhitespace: String {
-        split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 }
 

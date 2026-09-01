@@ -109,13 +109,6 @@ struct InboxView: View {
                     }
 
                     Button {
-                        model.beginManualItem(kind: .note)
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .help("Add note")
-
-                    Button {
                         model.generateSuggestions()
                     } label: {
                         Label("Refresh", systemImage: "arrow.clockwise")
@@ -168,11 +161,7 @@ struct InboxView: View {
             )
 
             VStack(alignment: .leading, spacing: 12) {
-                if model.isComposingManualItem {
-                    ManualQueueComposerView(model: model)
-                }
-
-                if model.queueItems.isEmpty && !model.isComposingManualItem {
+                if model.queueItems.isEmpty {
                     EmptyStateView(model: model)
                 } else {
                     ForEach(model.queueItems) { item in
@@ -404,84 +393,6 @@ private struct QueueCompletionButton: View {
         .controlSize(.small)
         .fixedSize(horizontal: true, vertical: false)
         .disabled(isDisabled)
-    }
-}
-
-private struct ManualQueueComposerView: View {
-    @Environment(\.loopPalette) private var palette
-    @ObservedObject var model: MinderViewModel
-    @State private var draftTitle = ""
-    @State private var draftBody = ""
-    @FocusState private var isBodyFocused: Bool
-
-    private var canSave: Bool {
-        !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("New Note", systemImage: "note.text")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(LoopTheme.text)
-
-                Spacer()
-
-                Button("Cancel") {
-                    model.cancelManualItem()
-                }
-                .controlSize(.small)
-
-                Button("Save Note") {
-                    model.saveManualItem(kind: .note, title: draftTitle, body: draftBody)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(palette.primary)
-                .controlSize(.small)
-                .disabled(!canSave || model.isWorking)
-            }
-
-            TextField("Note title", text: $draftTitle)
-                .textFieldStyle(.roundedBorder)
-
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $draftBody)
-                    .font(.body)
-                    .focused($isBodyFocused)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 4)
-
-                if draftBody.isEmpty {
-                    Text("Details")
-                        .font(.body)
-                        .foregroundStyle(LoopTheme.tertiaryText)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 12)
-                        .allowsHitTesting(false)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 84, maxHeight: 112)
-            .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(LoopTheme.separator.opacity(0.65), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-            .onTapGesture {
-                isBodyFocused = true
-            }
-        }
-        .padding(12)
-        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(palette.primary.opacity(0.25), lineWidth: 1)
-        }
-        .onAppear {
-            draftTitle = model.manualDraftTitle
-            draftBody = model.manualDraftBody
-        }
     }
 }
 
