@@ -14,6 +14,17 @@ struct LoopOperationalStatus: Equatable {
     var systemImage: String
     var targetSettingsStep: OnboardingStep
 
+    var shortTitle: String {
+        switch state {
+        case .ready:
+            return "Working"
+        case .limited:
+            return "Needs attention"
+        case .needsSetup:
+            return "Not working"
+        }
+    }
+
     static func make(
         profile: UserProfile?,
         permissionHealth: [PermissionHealth],
@@ -74,7 +85,7 @@ struct LoopOperationalStatus: Equatable {
                 title: notificationStatus.title,
                 detail: notificationStatus.detail,
                 systemImage: notificationStatus.systemImage,
-                targetSettingsStep: .profile
+                targetSettingsStep: .notifications
             )
         }
 

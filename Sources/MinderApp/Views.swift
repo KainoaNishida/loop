@@ -199,7 +199,7 @@ struct InboxView: View {
                 status: model.operationalStatus,
                 isRefreshing: model.isGeneratingSuggestions
             ) {
-                settingsModel.selectedStep = model.operationalStatus.targetSettingsStep
+                settingsModel.selectedStep = .status
                 model.openSettings()
             }
 
@@ -238,7 +238,10 @@ private struct OperationalStatusButton: View {
     }
 
     private var title: String {
-        isRefreshing ? "Refreshing..." : status.title
+        if isRefreshing {
+            return "Refreshing"
+        }
+        return status.shortTitle
     }
 
     var body: some View {
@@ -252,10 +255,6 @@ private struct OperationalStatusButton: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text(status.detail)
-                    .font(.caption2)
-                    .foregroundStyle(LoopTheme.secondaryText)
-                    .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(LoopTheme.tertiaryText)
@@ -263,7 +262,7 @@ private struct OperationalStatusButton: View {
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .frame(maxWidth: 360, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
             .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
             .overlay {
                 RoundedRectangle(cornerRadius: 6)
@@ -271,7 +270,7 @@ private struct OperationalStatusButton: View {
             }
         }
         .buttonStyle(.plain)
-        .help(status.detail)
+        .help("\(status.title): \(status.detail)")
     }
 }
 
@@ -429,7 +428,7 @@ private struct QueueCompletionButton: View {
         Button {
             action()
         } label: {
-            Label("Mark as Done", systemImage: "checkmark")
+            Label("Done", systemImage: "checkmark")
         }
         .buttonStyle(.borderedProminent)
         .tint(tint)
@@ -447,7 +446,7 @@ private struct RecentlyCompletedSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recently Completed")
+            Text("Recently Done")
                 .font(.caption.weight(.semibold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
@@ -1339,7 +1338,7 @@ struct SuggestionDetailView: View {
                 Button {
                     model.complete(suggestion)
                 } label: {
-                    Label("Mark as Done", systemImage: "checkmark.circle")
+                    Label("Done", systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

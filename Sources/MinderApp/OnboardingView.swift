@@ -30,7 +30,7 @@ struct OnboardingView: View {
         .onAppear {
             model.load()
             if !model.settingsSteps.contains(model.selectedStep) {
-                model.selectedStep = .profile
+                model.selectedStep = .about
             }
         }
     }
@@ -47,7 +47,7 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: 4) {
-                ForEach(OnboardingStep.allCases) { step in
+                ForEach(model.onboardingSteps) { step in
                     Button {
                         model.saveProfile()
                         model.selectedStep = step
@@ -87,6 +87,10 @@ struct OnboardingView: View {
         switch model.selectedStep {
         case .welcome:
             WelcomeStep()
+        case .status:
+            StatusStep(model: model)
+        case .notifications:
+            NotificationsStep(model: model)
         case .profile:
             ProfileStep(model: model)
         case .appearance:
@@ -114,7 +118,7 @@ struct OnboardingView: View {
             Button {
                 model.refreshPermissions()
             } label: {
-                Label("Check Again", systemImage: "arrow.clockwise")
+                Label(recheckStatusTitle(for: model.selectedStep), systemImage: "arrow.clockwise")
             }
 
             Spacer()
@@ -179,7 +183,7 @@ struct LoopSettingsPanelView: View {
             Label(model.profile.hasCompletedOnboarding ? "Settings" : "Setup", systemImage: "gearshape")
                 .font(.headline.weight(.semibold))
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 4) {
                 ForEach(model.settingsSteps) { step in
                     Button {
                         model.saveProfile()
@@ -190,11 +194,11 @@ struct LoopSettingsPanelView: View {
                                 .frame(width: 16)
                             Text(step.title)
                                 .lineLimit(1)
-                            Spacer(minLength: 0)
                         }
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 9)
                         .padding(.vertical, 7)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(model.selectedStep == step ? palette.primary : Color.primary)
                         .background(model.selectedStep == step ? palette.primary.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
                     }
@@ -204,13 +208,7 @@ struct LoopSettingsPanelView: View {
 
             Spacer()
 
-            VStack(alignment: .leading, spacing: 8) {
-                OperationalStatusSidebarView(status: model.operationalStatus)
-                Text(model.statusMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(4)
-            }
+            OperationalStatusSidebarView(status: model.operationalStatus)
         }
         .padding(14)
         .frame(width: 178)
@@ -222,6 +220,10 @@ struct LoopSettingsPanelView: View {
         switch model.selectedStep {
         case .welcome:
             WelcomeStep()
+        case .status:
+            StatusStep(model: model)
+        case .notifications:
+            NotificationsStep(model: model)
         case .profile:
             ProfileStep(model: model)
         case .appearance:
@@ -249,7 +251,7 @@ struct LoopSettingsPanelView: View {
             Button {
                 model.refreshPermissions()
             } label: {
-                Label("Check Again", systemImage: "arrow.clockwise")
+                Label(recheckStatusTitle(for: model.selectedStep), systemImage: "arrow.clockwise")
             }
 
             Spacer()
@@ -283,14 +285,136 @@ private struct WelcomeStep: View {
     }
 }
 
+private struct StatusStep: View {
+    @ObservedObject var model: OnboardingViewModel
+
+    private var status: LoopOperationalStatus {
+        model.operationalStatus
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepHeader(
+                title: "Status",
+                subtitle: "See whether Loop is working and the one thing to fix next."
+            )
+
+            OperationalStatusDetailCard(status: status) {
+                model.selectedStep = status.targetSettingsStep
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Details")
+                    .font(.headline)
+
+                SourceSummaryRow(
+                    title: "Apple Messages import",
+                    systemImage: "message",
+                    readiness: model.messagesReadiness,
+                    health: model.health(for: .appleMessages),
+                    source: model.source(for: .appleMessages),
+                    importResult: model.lastImportResults[.appleMessages],
+                    showsHealth: false
+                )
+
+                PermissionSummaryRow(health: model.health(for: .fullDiskAccess))
+                PermissionSummaryRow(health: model.health(for: .notifications))
+                PermissionSummaryRow(health: model.health(for: .contacts))
+            }
+
+            SetupPathBox(lines: statusHelpLines)
+        }
+    }
+
+    private var statusHelpLines: [String] {
+        switch status.state {
+        case .ready:
+            return [
+                "Loop is working. Messages access is available and recent Messages have imported.",
+                "Notifications are ready, or your alert timing is set to Quiet."
+            ]
+        case .limited:
+            return [
+                "Loop can still monitor Messages, but one supporting feature needs attention.",
+                "Use the action above to jump to the setting most likely to explain the yellow status."
+            ]
+        case .needsSetup:
+            return [
+                "Loop cannot fully monitor Messages yet.",
+                "Use the action above, then click Check Again after changing permissions or importing Messages."
+            ]
+        }
+    }
+}
+
+private struct OperationalStatusDetailCard: View {
+    var status: LoopOperationalStatus
+    var action: () -> Void
+
+    private var heading: String {
+        switch status.state {
+        case .ready:
+            return "You are all set"
+        case .limited, .needsSetup:
+            return "Do this next"
+        }
+    }
+
+    private var actionTitle: String {
+        switch status.state {
+        case .ready:
+            return "Review How Loop Works"
+        case .limited, .needsSetup:
+            return "Open \(status.targetSettingsStep.title)"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(heading)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            HStack(alignment: .center, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(status.state.tint)
+                    .frame(width: 28, height: 6)
+                Label(status.shortTitle, systemImage: status.systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(status.state.tint)
+                Spacer()
+            }
+
+            Text(status.title)
+                .font(.title3.weight(.semibold))
+            Text(status.detail)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: action) {
+                Label(actionTitle, systemImage: status.targetSettingsStep.systemImage)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(14)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(status.state.tint.opacity(0.22), lineWidth: 1)
+        }
+    }
+}
+
 private struct ProfileStep: View {
     @ObservedObject var model: OnboardingViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
-                title: "Your profile",
-                subtitle: "These defaults help Loop decide when and how to nudge you."
+                title: "Preferences",
+                subtitle: "Small personal defaults Loop uses when presenting your queue."
             )
 
             VStack(alignment: .leading, spacing: 14) {
@@ -305,7 +429,32 @@ private struct ProfileStep: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 320)
                 }
+            }
+        }
+    }
+}
 
+private struct NotificationsStep: View {
+    @ObservedObject var model: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            StepHeader(
+                title: "Notifications",
+                subtitle: "Choose whether Loop should nudge you when a background refresh finds genuinely new alerts."
+            )
+
+            PermissionCard(
+                health: model.health(for: .notifications),
+                detail: notificationHelperText,
+                primaryTitle: notificationPrimaryTitle,
+                primarySystemImage: notificationPrimarySystemImage,
+                primaryAction: notificationPrimaryAction,
+                secondaryTitle: notificationSecondaryTitle,
+                secondaryAction: notificationSecondaryAction
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
                 LabeledContent("Alert timing") {
                     Picker("When to notify", selection: $model.profile.notificationCadence) {
                         ForEach(NotificationCadence.allCases, id: \.rawValue) { cadence in
@@ -316,30 +465,19 @@ private struct ProfileStep: View {
                     .frame(maxWidth: 420)
                 }
 
-                PermissionCard(
-                    health: model.health(for: .notifications),
-                    detail: notificationHelperText,
-                    primaryTitle: notificationPrimaryTitle,
-                    primarySystemImage: notificationPrimarySystemImage,
-                    primaryAction: notificationPrimaryAction,
-                    secondaryTitle: notificationSecondaryTitle,
-                    secondaryAction: notificationSecondaryAction
-                )
-
                 Stepper("Quiet hours start: \(timeLabel(model.profile.quietHoursStartMinutes))", value: $model.profile.quietHoursStartMinutes, in: 0...1439, step: 60)
                     .frame(maxWidth: 360, alignment: .leading)
                 Stepper("Quiet hours end: \(timeLabel(model.profile.quietHoursEndMinutes))", value: $model.profile.quietHoursEndMinutes, in: 0...1439, step: 60)
                     .frame(maxWidth: 360, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Source priority")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        SourcePriorityPill(text: "Apple Messages")
-                    }
-                }
+                SetupPathBox(lines: [
+                    "Quiet means Loop still refreshes Messages, but it will not send system notifications.",
+                    "If macOS notifications are off, Loop can still build the queue. You just will not receive background digests."
+                ])
             }
+        }
+        .onChange(of: model.profile.notificationCadence) { _, _ in
+            model.saveProfile()
         }
     }
 
@@ -462,25 +600,12 @@ private struct MessagesStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Apple Messages",
-                subtitle: "Loop imports 30 days of Messages context read-only after Full Disk Access is granted. Active alerts use that same 30-day window."
-            )
-
-            SourceSetupCard(
-                title: "Apple Messages",
-                systemImage: "message.fill",
-                readiness: model.messagesReadiness,
-                status: model.health(for: .appleMessages),
-                detail: "Requires Full Disk Access because Apple does not provide a stable public API for local message history.",
-                primaryTitle: "Import Recent Messages",
-                primarySystemImage: "square.and.arrow.down",
-                primaryDisabled: !model.canImportMessages,
-                helperText: model.messagesNextAction,
-                action: { model.importMessagesRecent() }
+                subtitle: "Connect Messages once, then Loop can keep your alert queue fresh."
             )
 
             PermissionCard(
                 health: model.health(for: .fullDiskAccess),
-                detail: "After granting access, return here and click Check Again.",
+                detail: "Loop needs Full Disk Access to read your local Messages database.",
                 primaryTitle: "Open System Settings",
                 primarySystemImage: "lock.open",
                 primaryAction: { model.openSettings(for: .fullDiskAccess) },
@@ -490,11 +615,24 @@ private struct MessagesStep: View {
             )
 
             SourceSetupCard(
-                title: "Contact Names",
+                title: "Import Recent Messages",
+                systemImage: "square.and.arrow.down",
+                readiness: model.messagesReadiness,
+                status: model.health(for: .appleMessages),
+                detail: "Import the last 30 days so Loop can build your first alert queue.",
+                primaryTitle: "Import Messages",
+                primarySystemImage: "message.fill",
+                primaryDisabled: !model.canImportMessages,
+                helperText: model.messagesNextAction,
+                action: { model.importMessagesRecent() }
+            )
+
+            SourceSetupCard(
+                title: "Contact Names Optional",
                 systemImage: "person.crop.circle.badge.checkmark",
                 readiness: model.contactsReadiness,
                 status: model.health(for: .contacts),
-                detail: "Optional but recommended. Contacts are used locally to show names instead of phone numbers or email handles.",
+                detail: "Contacts help Loop show names instead of phone numbers or email addresses.",
                 primaryTitle: "Request Contacts",
                 primarySystemImage: "person.2",
                 primaryDisabled: !model.canRequestContacts,
@@ -503,9 +641,9 @@ private struct MessagesStep: View {
             )
 
             SetupPathBox(lines: [
-                "Full Disk Access lets Loop read your local Messages database. Loop imports read-only copies into its local cache.",
-                "Contacts are optional. Without Contacts, Loop can still work, but some people may appear as phone numbers or email addresses.",
-                "After permissions are ready, import recent Messages once. The Refresh button can update the queue after that."
+                "Loop imports read-only copies into its local cache.",
+                "Contacts are optional. Without Contacts, Loop can still work.",
+                "After the first import, the Refresh button updates Messages and alerts."
             ])
         }
     }
@@ -854,23 +992,23 @@ private struct AboutStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "How Loop Works",
-                subtitle: "Loop keeps a small queue of conversations that may need your attention, then gets out of the way."
+                subtitle: "Loop turns recent Messages into a small queue of conversations that may need your attention."
             )
 
             VStack(alignment: .leading, spacing: 14) {
                 GuideSection(
                     systemImage: "message.badge",
-                    title: "What Loop watches",
+                    title: "1. Connect Messages",
                     detail: "Loop reviews recent Apple Messages locally and looks for conversations with unanswered questions, deadlines, reminders, or follow-ups."
                 )
                 GuideSection(
                     systemImage: "arrow.clockwise",
-                    title: "How the queue updates",
+                    title: "2. Refresh the queue",
                     detail: "Use Refresh whenever you want to recheck Messages. Loop also refreshes in the background and replaces older active alerts when newer messages matter."
                 )
                 GuideSection(
                     systemImage: "checkmark.circle",
-                    title: "Mark an alert done",
+                    title: "3. Mark alerts done",
                     detail: "Open the queue, review the message context, then mark the alert done when that conversation no longer needs action."
                 )
                 GuideSection(
@@ -1101,6 +1239,7 @@ private struct SourceSummaryRow: View {
     var health: PermissionHealth
     var source: ConversationSource?
     var importResult: ImportResult?
+    var showsHealth = true
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1117,7 +1256,9 @@ private struct SourceSummaryRow: View {
             }
             Spacer()
             ReadinessPill(readiness: readiness)
-            HealthStatusPill(health: health)
+            if showsHealth {
+                HealthStatusPill(health: health)
+            }
         }
         .padding(10)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
@@ -1223,32 +1364,20 @@ private struct OperationalStatusSidebarView: View {
             RoundedRectangle(cornerRadius: 2)
                 .fill(status.state.tint)
                 .frame(width: 22, height: 5)
-            Label(status.title, systemImage: status.systemImage)
+            Label(status.shortTitle, systemImage: status.systemImage)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(status.state.tint)
                 .lineLimit(1)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
         .background(status.state.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(status.state.tint.opacity(0.20), lineWidth: 1)
         }
         .help(status.detail)
-    }
-}
-
-private struct SourcePriorityPill: View {
-    var text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
     }
 }
 
@@ -1293,6 +1422,19 @@ private func summaryRelativeLabel(_ date: Date) -> String {
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .short
     return formatter.localizedString(for: date, relativeTo: Date())
+}
+
+private func recheckStatusTitle(for step: OnboardingStep) -> String {
+    switch step {
+    case .messages:
+        return "Check Messages Access"
+    case .notifications:
+        return "Check Notifications"
+    case .status:
+        return "Recheck Status"
+    default:
+        return "Check Status"
+    }
 }
 
 private enum TimeFormatters {

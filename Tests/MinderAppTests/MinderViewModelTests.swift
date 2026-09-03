@@ -559,6 +559,7 @@ final class MinderViewModelTests: XCTestCase {
 
         XCTAssertEqual(status.state, .ready)
         XCTAssertEqual(status.title, "Ready")
+        XCTAssertEqual(status.shortTitle, "Working")
         XCTAssertEqual(status.targetSettingsStep, .about)
     }
 
@@ -579,6 +580,7 @@ final class MinderViewModelTests: XCTestCase {
         )
 
         XCTAssertEqual(status.state, .needsSetup)
+        XCTAssertEqual(status.shortTitle, "Not working")
         XCTAssertEqual(status.targetSettingsStep, .messages)
     }
 
@@ -601,7 +603,8 @@ final class MinderViewModelTests: XCTestCase {
 
         XCTAssertEqual(status.state, .limited)
         XCTAssertEqual(status.title, "Notifications off")
-        XCTAssertEqual(status.targetSettingsStep, .profile)
+        XCTAssertEqual(status.shortTitle, "Needs attention")
+        XCTAssertEqual(status.targetSettingsStep, .notifications)
     }
 
     func testOperationalStatusLimitedWhenNotificationsAreNotEnabled() throws {
@@ -614,7 +617,7 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(status.state, .limited)
         XCTAssertEqual(status.title, "Enable notifications")
         XCTAssertTrue(status.detail.contains("Notifications have not been enabled yet"))
-        XCTAssertEqual(status.targetSettingsStep, .profile)
+        XCTAssertEqual(status.targetSettingsStep, .notifications)
     }
 
     func testOperationalStatusAllowsQuietCadenceWithoutNotificationPermission() throws {
@@ -674,10 +677,29 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertTrue(source.contains("How Loop Works"))
         XCTAssertTrue(source.contains("Loop reviews recent Apple Messages locally"))
         XCTAssertTrue(source.contains("Use Refresh"))
-        XCTAssertTrue(source.contains("Mark an alert done"))
+        XCTAssertTrue(source.contains("Mark alerts done"))
         XCTAssertTrue(source.contains("Notifications appear only for genuinely new alerts"))
         XCTAssertTrue(source.contains("Local mode works without Gemini credentials"))
         XCTAssertTrue(source.contains("selected message snippets may be sent to Gemini"))
+    }
+
+    func testQueueUsesDoneLanguageForCompletion() throws {
+        let source = try sourceFileContents("Sources/MinderApp/Views.swift")
+
+        XCTAssertTrue(source.contains("Label(\"Done\""))
+        XCTAssertTrue(source.contains("Recently Done"))
+        XCTAssertFalse(source.contains("Mark as Done"))
+        XCTAssertFalse(source.contains("Recently Completed"))
+    }
+
+    func testSettingsIncludesStatusTroubleshootingTab() throws {
+        let viewSource = try sourceFileContents("Sources/MinderApp/OnboardingView.swift")
+        let modelSource = try sourceFileContents("Sources/MinderApp/OnboardingViewModel.swift")
+
+        XCTAssertTrue(modelSource.contains("[.about, .status, .messages, .notifications, .privacy, .cloudAI, .appearance, .profile]"))
+        XCTAssertTrue(viewSource.contains("StatusStep(model: model)"))
+        XCTAssertTrue(viewSource.contains("Details"))
+        XCTAssertTrue(viewSource.contains("Open \\(status.targetSettingsStep.title)"))
     }
 }
 

@@ -76,11 +76,11 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     var canMoveBack: Bool {
-        selectedStep != OnboardingStep.allCases.first
+        selectedStep != onboardingSteps.first
     }
 
     var canMoveForward: Bool {
-        selectedStep != OnboardingStep.allCases.last
+        selectedStep != onboardingSteps.last
     }
 
     var completedPermissionCount: Int {
@@ -132,7 +132,11 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     var settingsSteps: [OnboardingStep] {
-        [.profile, .appearance, .messages, .cloudAI, .privacy, .about]
+        [.about, .status, .messages, .notifications, .privacy, .cloudAI, .appearance, .profile]
+    }
+
+    var onboardingSteps: [OnboardingStep] {
+        [.about, .status, .messages, .notifications, .privacy, .cloudAI, .summary]
     }
 
     var messagesNextAction: String? {
@@ -193,18 +197,18 @@ final class OnboardingViewModel: ObservableObject {
 
     func next() {
         saveProfile()
-        guard let index = OnboardingStep.allCases.firstIndex(of: selectedStep), index < OnboardingStep.allCases.count - 1 else {
+        guard let index = onboardingSteps.firstIndex(of: selectedStep), index < onboardingSteps.count - 1 else {
             return
         }
-        selectedStep = OnboardingStep.allCases[index + 1]
+        selectedStep = onboardingSteps[index + 1]
     }
 
     func back() {
         saveProfile()
-        guard let index = OnboardingStep.allCases.firstIndex(of: selectedStep), index > 0 else {
+        guard let index = onboardingSteps.firstIndex(of: selectedStep), index > 0 else {
             return
         }
-        selectedStep = OnboardingStep.allCases[index - 1]
+        selectedStep = onboardingSteps[index - 1]
     }
 
     func saveProfile() {
@@ -443,6 +447,8 @@ final class OnboardingViewModel: ObservableObject {
 
 enum OnboardingStep: String, CaseIterable, Identifiable {
     case welcome
+    case status
+    case notifications
     case profile
     case appearance
     case messages
@@ -452,7 +458,7 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
     case summary
 
     static var allCases: [OnboardingStep] {
-        return [.welcome, .profile, .appearance, .messages, .cloudAI, .privacy, .about, .summary]
+        return [.welcome, .about, .status, .messages, .notifications, .privacy, .cloudAI, .appearance, .profile, .summary]
     }
 
     var id: String { rawValue }
@@ -460,7 +466,9 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .welcome: return "Welcome"
-        case .profile: return "Profile"
+        case .status: return "Status"
+        case .notifications: return "Notifications"
+        case .profile: return "Preferences"
         case .appearance: return "Theme"
         case .messages: return "Messages"
         case .cloudAI: return "AI"
@@ -473,6 +481,8 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .welcome: return "sparkles"
+        case .status: return "gauge.with.dots.needle.67percent"
+        case .notifications: return "bell.badge"
         case .profile: return "person.crop.circle"
         case .appearance: return "paintpalette"
         case .messages: return "message"
