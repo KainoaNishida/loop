@@ -45,7 +45,9 @@ private enum LoopTheme {
 }
 
 private enum LoopQueueLayout {
-    static let cardHeight: CGFloat = 420
+    static let appHeight: CGFloat = 620
+    static let cardHeight: CGFloat = 320
+    static let cardMaxWidth: CGFloat = 540
 }
 
 struct InboxView: View {
@@ -65,12 +67,12 @@ struct InboxView: View {
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if model.selectedTab == .queue {
+            if model.selectedTab != .settings {
                 Divider()
                 footer
             }
         }
-        .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: 0, idealHeight: 620, maxHeight: .infinity)
+        .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: LoopQueueLayout.appHeight, idealHeight: LoopQueueLayout.appHeight, maxHeight: LoopQueueLayout.appHeight)
         .environment(\.loopPalette, palette)
         .tint(palette.primary)
         .background(LoopTheme.pageFill)
@@ -79,53 +81,52 @@ struct InboxView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 14) {
             HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(palette.primary)
-                    Image(systemName: "checklist.checked")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 34, height: 34)
+                LoopAppMark()
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Loop")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(LoopTheme.text)
-                    Text(lastUpdatedText)
-                        .font(.caption)
-                        .foregroundStyle(LoopTheme.secondaryText)
-                        .lineLimit(1)
+                    HStack(spacing: 7) {
+                        Text(lastUpdatedText)
+                            .font(.caption)
+                            .foregroundStyle(LoopTheme.secondaryText)
+                            .lineLimit(1)
+                        if model.selectedTab == .queue {
+                            QueueCountBadge(count: model.activeQueueCount)
+                        } else if model.selectedTab == .done {
+                            DoneCountBadge(count: model.recentCompletedQueueItems.count)
+                        }
+                    }
                 }
             }
 
             Spacer()
 
             HStack(spacing: 8) {
-                if model.selectedTab == .queue {
-                    if model.isShowingProgress {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    Button {
-                        model.generateSuggestions()
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(palette.primary)
-                    .disabled(!model.canGenerateSuggestions)
-                    .help("Refresh messages and alerts")
+                if model.isShowingProgress {
+                    ProgressView()
+                        .controlSize(.small)
                 }
 
                 Button {
-                    model.toggleSettings()
+                    model.generateSuggestions()
                 } label: {
-                    Image(systemName: "gearshape")
-                        .foregroundStyle(model.selectedTab == .settings ? palette.primary : LoopTheme.secondaryText)
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .help(model.selectedTab == .settings ? "Close settings" : "Settings")
+                .buttonStyle(.borderedProminent)
+                .tint(palette.primary)
+                .disabled(!model.canGenerateSuggestions)
+                .help("Refresh messages and alerts")
+
+                LoopMainTabSwitcher(
+                    selectedTab: Binding(
+                        get: { model.selectedTab },
+                        set: { model.selectedTab = $0 }
+                    ),
+                    activeCount: model.activeQueueCount,
+                    doneCount: model.recentCompletedQueueItems.count
+                )
 
                 Button {
                     model.quitLoop()
@@ -137,8 +138,15 @@ struct InboxView: View {
             .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(LoopTheme.headerFill)
+        .padding(.vertical, 10)
+        .background {
+            ZStack(alignment: .bottom) {
+                LoopTheme.headerFill
+                Rectangle()
+                    .fill(palette.primary.opacity(0.16))
+                    .frame(height: 2)
+            }
+        }
     }
 
     @ViewBuilder
@@ -146,13 +154,18 @@ struct InboxView: View {
         switch model.selectedTab {
         case .queue:
             queue
+        case .done:
+            DoneHistoryView(
+                items: model.recentCompletedQueueItems,
+                undo: { model.undoCompleted($0) }
+            )
         case .settings:
             LoopSettingsPanelView(model: settingsModel)
         }
     }
 
     private var queue: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 12) {
             QueueArrowButton(
                 systemImage: "chevron.left",
                 help: "Previous queue item",
@@ -160,7 +173,7 @@ struct InboxView: View {
                 action: { model.goToPreviousQueuePage() }
             )
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .center, spacing: 10) {
                 if model.queueItems.isEmpty {
                     EmptyStateView(model: model)
                 } else {
@@ -188,9 +201,12 @@ struct InboxView: View {
                 action: { model.goToNextQueuePage() }
             )
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .background(LoopTheme.pageFill)
+        .background {
+            QueueStageBackground()
+        }
     }
 
     private var footer: some View {
@@ -205,7 +221,7 @@ struct InboxView: View {
 
             Spacer()
 
-            if model.queuePageCount > 0 {
+            if model.selectedTab == .queue && model.queuePageCount > 0 {
                 QueueFooterPageIndicator(
                     pageNumber: model.queuePageNumber,
                     pageCount: model.queuePageCount
@@ -213,7 +229,7 @@ struct InboxView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(LoopTheme.elevatedFill)
     }
 
@@ -274,6 +290,126 @@ private struct OperationalStatusButton: View {
     }
 }
 
+private struct LoopAppMark: View {
+    @Environment(\.loopPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(palette.primary)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 34, height: 34)
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(palette.completion)
+                .frame(width: 10, height: 10)
+                .overlay {
+                    Circle()
+                        .stroke(LoopTheme.headerFill, lineWidth: 2)
+                }
+                .offset(x: 2, y: 2)
+        }
+        .accessibilityLabel("Loop")
+    }
+}
+
+private struct QueueCountBadge: View {
+    var count: Int
+
+    var body: some View {
+        Label(count == 1 ? "1 alert" : "\(count) alerts", systemImage: "tray.full")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(LoopTheme.secondaryText)
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(LoopTheme.controlFill, in: Capsule())
+    }
+}
+
+private struct DoneCountBadge: View {
+    var count: Int
+
+    var body: some View {
+        Label(count == 1 ? "1 done" : "\(count) done", systemImage: "clock.arrow.circlepath")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(LoopTheme.secondaryText)
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(LoopTheme.controlFill, in: Capsule())
+    }
+}
+
+private struct LoopMainTabSwitcher: View {
+    @Environment(\.loopPalette) private var palette
+
+    @Binding var selectedTab: LoopMainTab
+    var activeCount: Int
+    var doneCount: Int
+
+    var body: some View {
+        HStack(spacing: 3) {
+            tabButton(.queue, count: activeCount)
+            tabButton(.done, count: doneCount)
+            tabButton(.settings, count: nil)
+        }
+        .padding(3)
+        .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(LoopTheme.separator.opacity(0.55), lineWidth: 1)
+        }
+    }
+
+    private func tabButton(_ tab: LoopMainTab, count: Int?) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: tab.systemImage)
+                    .font(.caption.weight(.semibold))
+                Text(tab.title)
+                    .font(.caption.weight(.semibold))
+                if let count {
+                    Text("\(count)")
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(selectedTab == tab ? .white.opacity(0.85) : LoopTheme.tertiaryText)
+                }
+            }
+            .foregroundStyle(selectedTab == tab ? .white : LoopTheme.secondaryText)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(selectedTab == tab ? palette.primary : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(tab.title)
+    }
+}
+
+private struct QueueStageBackground: View {
+    @Environment(\.loopPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            LoopTheme.pageFill
+            LinearGradient(
+                colors: [
+                    palette.primary.opacity(0.045),
+                    LoopTheme.pageFill,
+                    palette.tertiary.opacity(0.035)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
+        }
+    }
+}
+
 private struct QueueFooterPageIndicator: View {
     var pageNumber: Int
     var pageCount: Int
@@ -305,13 +441,13 @@ private struct QueueArrowButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.title3.weight(.bold))
+                .font(.headline.weight(.bold))
                 .foregroundStyle(isEnabled ? palette.primary : LoopTheme.tertiaryText)
-                .frame(width: 42, height: 88)
-                .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+                .frame(width: 38, height: 74)
+                .background(isEnabled ? palette.primary.opacity(0.10) : LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(LoopTheme.separator.opacity(isEnabled ? 0.9 : 0.45), lineWidth: 1)
+                        .stroke(isEnabled ? palette.primary.opacity(0.22) : LoopTheme.separator.opacity(0.45), lineWidth: 1)
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -334,36 +470,43 @@ private struct LoopSuggestionCardView: View {
         let tint = card.suggestion.type.tint(in: palette)
 
         VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(card.suggestion.evidence.threadTitle)
-                    .font(.headline)
-                    .foregroundStyle(LoopTheme.text)
-                    .lineLimit(1)
+            AlertCardShell(tint: tint) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 12) {
+                        AlertGlyph(systemImage: card.suggestion.type.systemImage, tint: tint)
+                        VStack(alignment: .leading, spacing: 4) {
+                            StatusPill(
+                                text: card.suggestion.type.displayName,
+                                systemImage: card.suggestion.type.systemImage,
+                                tint: tint
+                            )
+                            Text(card.suggestion.evidence.threadTitle)
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(LoopTheme.text)
+                                .lineLimit(1)
+                            Text(card.suggestion.title)
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(LoopTheme.secondaryText)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        VStack(alignment: .trailing, spacing: 6) {
+                            ConfidenceBadge(confidence: card.suggestion.confidence)
+                            Text(card.suggestion.evidence.sourceTimestamp.relativeLabel)
+                                .font(.caption2)
+                                .foregroundStyle(LoopTheme.tertiaryText)
+                                .lineLimit(1)
+                        }
+                    }
 
-                Text(card.suggestion.title)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(LoopTheme.text)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    SuggestedActionStrip(text: card.suggestion.action.text, tint: tint)
 
-                Text(card.suggestion.action.text)
-                    .font(.caption)
-                    .foregroundStyle(LoopTheme.secondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                ConversationPreview(messages: card.recentMessages, platform: card.messagePlatform)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    ConversationPreview(messages: card.recentMessages, platform: card.messagePlatform)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
-            .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(tint.opacity(0.22), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
 
             QueueCompletionButton(
                 tint: tint,
@@ -371,7 +514,7 @@ private struct LoopSuggestionCardView: View {
                 action: complete
             )
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
     }
 }
 
@@ -385,37 +528,119 @@ private struct ManualQueueItemCardView: View {
         let tint = item.kind.tint(in: palette)
 
         VStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(item.title)
-                            .font(.headline)
-                            .foregroundStyle(LoopTheme.text)
-                            .lineLimit(2)
-
-                        if let body = item.body {
-                            Text(body)
-                                .font(.caption)
-                                .foregroundStyle(LoopTheme.secondaryText)
+            AlertCardShell(tint: tint) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 12) {
+                        AlertGlyph(systemImage: item.kind.systemImage, tint: tint)
+                        VStack(alignment: .leading, spacing: 4) {
+                            StatusPill(
+                                text: item.kind.displayName,
+                                systemImage: item.kind.systemImage,
+                                tint: tint
+                            )
+                            Text(item.title)
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(LoopTheme.text)
+                                .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        Spacer(minLength: 8)
+                        Text(item.updatedAt.relativeLabel)
+                            .font(.caption2)
+                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if let body = item.body {
+                                Text(body)
+                                    .font(.callout)
+                                    .foregroundStyle(LoopTheme.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                Text("No extra details.")
+                                    .font(.callout)
+                                    .foregroundStyle(LoopTheme.tertiaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
-            .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(tint.opacity(0.20), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
 
             QueueCompletionButton(tint: tint, action: complete)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
+    }
+}
+
+private struct AlertCardShell<Content: View>: View {
+    var tint: Color
+    private let content: Content
+
+    init(tint: Color, @ViewBuilder content: () -> Content) {
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            LoopTheme.cardFill
+            Rectangle()
+                .fill(tint)
+                .frame(width: 5)
+            content
+                .padding(14)
+                .padding(.leading, 5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.24), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.09), radius: 18, y: 8)
+    }
+}
+
+private struct AlertGlyph: View {
+    var systemImage: String
+    var tint: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(tint.opacity(0.14))
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+        }
+        .frame(width: 38, height: 38)
+    }
+}
+
+private struct SuggestedActionStrip: View {
+    var text: String
+    var tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "arrow.turn.down.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .padding(.top, 2)
+            Text(text)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(LoopTheme.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -428,58 +653,157 @@ private struct QueueCompletionButton: View {
         Button {
             action()
         } label: {
-            Label("Done", systemImage: "checkmark")
+            Label("Done", systemImage: "checkmark.circle.fill")
+                .font(.caption.weight(.semibold))
+                .frame(minWidth: 116)
         }
         .buttonStyle(.borderedProminent)
         .tint(tint)
         .controlSize(.small)
         .fixedSize(horizontal: true, vertical: false)
         .disabled(isDisabled)
+        .shadow(color: tint.opacity(isDisabled ? 0 : 0.16), radius: 8, y: 3)
     }
 }
 
-private struct RecentlyCompletedSection: View {
+private struct DoneHistoryView: View {
     @Environment(\.loopPalette) private var palette
 
     var items: [LoopCompletedQueueItem]
     var undo: (LoopCompletedQueueItem) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recently Done")
-                .font(.caption.weight(.semibold))
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 8) {
-                ForEach(items) { item in
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(palette.completion)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.title)
-                                .font(.callout.weight(.medium))
-                                .foregroundStyle(LoopTheme.text)
-                                .lineLimit(1)
-                            Text(item.updatedAt.relativeLabel)
-                                .font(.caption)
-                                .foregroundStyle(LoopTheme.secondaryText)
-                        }
+        ZStack {
+            QueueStageBackground()
+            if items.isEmpty {
+                DoneEmptyState()
+                    .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Recently Done")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(LoopTheme.text)
                         Spacer()
-                        Button("Undo") {
-                            undo(item)
-                        }
-                        .controlSize(.small)
-                        .tint(palette.completion)
+                        Text(items.count == 1 ? "1 item" : "\(items.count) items")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(LoopTheme.secondaryText)
                     }
-                    .padding(10)
-                    .background(LoopTheme.completedFill, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(palette.completion.opacity(0.18), lineWidth: 1)
+
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(items) { item in
+                                DoneHistoryRow(item: item) {
+                                    undo(item)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                 }
+                .padding(16)
+                .frame(maxWidth: LoopQueueLayout.cardMaxWidth, maxHeight: LoopQueueLayout.cardHeight + 72, alignment: .topLeading)
+                .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(palette.completion.opacity(0.20), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct DoneHistoryRow: View {
+    @Environment(\.loopPalette) private var palette
+
+    var item: LoopCompletedQueueItem
+    var undo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(palette.completion.opacity(0.13))
+                Image(systemName: item.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(palette.completion)
+            }
+            .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(LoopTheme.text)
+                    .lineLimit(1)
+                Text(item.updatedAt.relativeLabel)
+                    .font(.caption)
+                    .foregroundStyle(LoopTheme.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                undo()
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .controlSize(.small)
+            .tint(palette.completion)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(LoopTheme.completedFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.completion.opacity(0.16), lineWidth: 1)
+        }
+    }
+}
+
+private struct DoneEmptyState: View {
+    @Environment(\.loopPalette) private var palette
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(palette.completion.opacity(0.14))
+                    .frame(width: 68, height: 68)
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 25, weight: .semibold))
+                    .foregroundStyle(palette.completion)
+            }
+            Text("Nothing done yet")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(LoopTheme.text)
+            Text("Alerts you mark Done will show up here briefly, so you can undo them if needed.")
+                .font(.caption)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
+        }
+        .padding(.vertical, 24)
+        .padding(.horizontal, 24)
+        .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
+        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.completion.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
+    }
+}
+
+private extension LoopCompletedQueueItem {
+    var systemImage: String {
+        switch self {
+        case .suggestion:
+            return "checkmark.bubble"
+        case .manual:
+            return "checkmark.circle"
         }
     }
 }
@@ -648,14 +972,20 @@ struct EmptyStateView: View {
     @ObservedObject var model: MinderViewModel
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "message.badge")
-                .font(.system(size: 36, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 64, height: 64)
-                .background(palette.primary, in: RoundedRectangle(cornerRadius: 16))
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(palette.completion.opacity(0.14))
+                    .frame(width: 68, height: 68)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(palette.primary)
+                    .frame(width: 44, height: 44)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
             Text("Nothing to complete")
-                .font(.headline)
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(LoopTheme.text)
             Text(model.messages.isEmpty ? "No messages checked yet." : "All caught up.")
                 .font(.caption)
@@ -665,21 +995,22 @@ struct EmptyStateView: View {
             Button {
                 model.generateSuggestions()
             } label: {
-                Text("Refresh")
+                Label("Refresh", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.borderedProminent)
             .tint(palette.primary)
             .controlSize(.small)
             .disabled(!model.canGenerateSuggestions)
         }
-        .padding(.vertical, 52)
+        .padding(.vertical, 24)
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
-        .background(LoopTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
+        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(LoopTheme.separator, lineWidth: 1)
+                .stroke(palette.completion.opacity(0.24), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
     }
 }
 
@@ -1470,6 +1801,23 @@ private struct ConfidenceDot: View {
         if confidence >= 0.85 { return .green }
         if confidence >= 0.60 { return .orange }
         return .secondary
+    }
+}
+
+private struct ConfidenceBadge: View {
+    var confidence: Double
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ConfidenceDot(confidence: confidence)
+            Text("\(Int(confidence * 100))%")
+                .font(.caption2.weight(.semibold).monospacedDigit())
+        }
+        .foregroundStyle(LoopTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(LoopTheme.controlFill, in: Capsule())
+        .help("Confidence")
     }
 }
 

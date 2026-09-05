@@ -133,7 +133,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private func popoverContentSize(for model: MinderViewModel) -> NSSize {
         let requestedHeight: CGFloat
         switch model.selectedTab {
-        case .queue:
+        case .queue, .done:
             requestedHeight = Self.queuePopoverHeight
         case .settings:
             requestedHeight = Self.settingsPopoverHeight

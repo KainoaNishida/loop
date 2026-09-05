@@ -15,6 +15,7 @@ extension AppleMessagesConversationImporter: AppleMessagesImporting {}
 
 enum LoopMainTab: String, CaseIterable, Identifiable {
     case queue
+    case done
     case settings
 
     var id: String { rawValue }
@@ -23,6 +24,8 @@ enum LoopMainTab: String, CaseIterable, Identifiable {
         switch self {
         case .queue:
             return "Queue"
+        case .done:
+            return "Done"
         case .settings:
             return "Settings"
         }
@@ -32,6 +35,8 @@ enum LoopMainTab: String, CaseIterable, Identifiable {
         switch self {
         case .queue:
             return "checklist"
+        case .done:
+            return "clock.arrow.circlepath"
         case .settings:
             return "gearshape"
         }

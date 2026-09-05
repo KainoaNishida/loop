@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 import MinderCore
 
+private enum SettingsSurface {
+    static let pageFill = Color(nsColor: .windowBackgroundColor)
+    static let sidebarFill = Color(nsColor: .textBackgroundColor).opacity(0.42)
+    static let cardFill = Color(nsColor: .controlBackgroundColor)
+    static let controlFill = Color(nsColor: .textBackgroundColor)
+    static let text = Color(nsColor: .labelColor)
+    static let secondaryText = Color(nsColor: .secondaryLabelColor)
+    static let separator = Color(nsColor: .separatorColor)
+}
+
 struct OnboardingView: View {
     @ObservedObject var model: OnboardingViewModel
 
@@ -16,8 +26,9 @@ struct OnboardingView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     stepContent
-                        .padding(28)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                        .frame(maxWidth: 680, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 Divider()
                 footer
@@ -26,7 +37,7 @@ struct OnboardingView: View {
         .frame(minWidth: 860, minHeight: 640)
         .environment(\.loopPalette, palette)
         .tint(palette.primary)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(SettingsSurface.pageFill)
         .onAppear {
             model.load()
             if !model.settingsSteps.contains(model.selectedStep) {
@@ -37,14 +48,10 @@ struct OnboardingView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(model.profile.hasCompletedOnboarding ? "Loop Settings" : "Loop Setup", systemImage: "checklist.checked")
-                    .font(.title3.weight(.semibold))
-                Text("Permissions stay visible. Nothing connects silently.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SettingsSidebarHeader(
+                title: model.profile.hasCompletedOnboarding ? "Loop Settings" : "Loop Setup",
+                subtitle: "Permissions stay visible. Nothing connects silently."
+            )
 
             VStack(spacing: 4) {
                 ForEach(model.onboardingSteps) { step in
@@ -52,16 +59,7 @@ struct OnboardingView: View {
                         model.saveProfile()
                         model.selectedStep = step
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: step.systemImage)
-                                .frame(width: 18)
-                            Text(step.title)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(model.selectedStep == step ? palette.primary : Color.primary)
-                        .background(model.selectedStep == step ? palette.primary.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                        SettingsNavRow(step: step, isSelected: model.selectedStep == step)
                     }
                     .buttonStyle(.plain)
                 }
@@ -79,7 +77,9 @@ struct OnboardingView: View {
         }
         .padding(18)
         .frame(width: 230)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
+        .background {
+            SettingsSidebarBackground()
+        }
     }
 
     @ViewBuilder
@@ -163,8 +163,10 @@ struct LoopSettingsPanelView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     stepContent
-                        .padding(20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 18)
+                        .frame(maxWidth: 640, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 Divider()
                 footer
@@ -172,7 +174,7 @@ struct LoopSettingsPanelView: View {
         }
         .environment(\.loopPalette, palette)
         .tint(palette.primary)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(SettingsSurface.pageFill)
         .onAppear {
             model.load()
         }
@@ -180,8 +182,10 @@ struct LoopSettingsPanelView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(model.profile.hasCompletedOnboarding ? "Settings" : "Setup", systemImage: "gearshape")
-                .font(.headline.weight(.semibold))
+            SettingsSidebarHeader(
+                title: model.profile.hasCompletedOnboarding ? "Settings" : "Setup",
+                subtitle: "Guide and setup."
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(model.settingsSteps) { step in
@@ -189,18 +193,7 @@ struct LoopSettingsPanelView: View {
                         model.saveProfile()
                         model.selectedStep = step
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: step.systemImage)
-                                .frame(width: 16)
-                            Text(step.title)
-                                .lineLimit(1)
-                        }
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 7)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(model.selectedStep == step ? palette.primary : Color.primary)
-                        .background(model.selectedStep == step ? palette.primary.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                        SettingsNavRow(step: step, isSelected: model.selectedStep == step, isCompact: true)
                     }
                     .buttonStyle(.plain)
                 }
@@ -211,8 +204,10 @@ struct LoopSettingsPanelView: View {
             OperationalStatusSidebarView(status: model.operationalStatus)
         }
         .padding(14)
-        .frame(width: 178)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
+        .frame(width: 192)
+        .background {
+            SettingsSidebarBackground()
+        }
     }
 
     @ViewBuilder
@@ -265,6 +260,146 @@ struct LoopSettingsPanelView: View {
         }
         .padding(12)
         .controlSize(.small)
+    }
+}
+
+private struct SettingsSidebarHeader: View {
+    @Environment(\.loopPalette) private var palette
+
+    var title: String
+    var subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            SettingsLoopMark()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(SettingsSurface.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.86)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(SettingsSurface.secondaryText)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(palette.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.primary.opacity(0.14), lineWidth: 1)
+        }
+    }
+}
+
+private struct SettingsLoopMark: View {
+    @Environment(\.loopPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(palette.primary)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 30, height: 30)
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(palette.completion)
+                .frame(width: 9, height: 9)
+                .overlay {
+                    Circle()
+                        .stroke(SettingsSurface.controlFill, lineWidth: 2)
+                }
+                .offset(x: 2, y: 2)
+        }
+    }
+}
+
+private struct SettingsNavRow: View {
+    @Environment(\.loopPalette) private var palette
+
+    var step: OnboardingStep
+    var isSelected: Bool
+    var isCompact = false
+
+    var body: some View {
+        HStack(spacing: isCompact ? 8 : 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? palette.primary.opacity(0.14) : SettingsSurface.controlFill.opacity(0.75))
+                Image(systemName: step.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? palette.primary : SettingsSurface.secondaryText)
+            }
+            .frame(width: isCompact ? 22 : 26, height: isCompact ? 22 : 26)
+
+            Text(step.title)
+                .font((isCompact ? Font.caption : Font.callout).weight(isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? SettingsSurface.text : SettingsSurface.secondaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if isSelected {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(palette.primary)
+                    .frame(width: 4, height: 18)
+            }
+        }
+        .padding(.horizontal, isCompact ? 8 : 10)
+        .padding(.vertical, isCompact ? 6 : 7)
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? palette.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct SettingsSidebarBackground: View {
+    @Environment(\.loopPalette) private var palette
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            SettingsSurface.sidebarFill
+            LinearGradient(
+                colors: [palette.primary.opacity(0.10), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 180)
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    var tint: Color
+    private let content: Content
+
+    init(tint: Color = SettingsSurface.separator, @ViewBuilder content: () -> Content) {
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            SettingsSurface.cardFill
+            Rectangle()
+                .fill(tint.opacity(0.72))
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .padding(12)
+            .padding(.leading, 4)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        }
     }
 }
 
@@ -370,10 +505,10 @@ private struct OperationalStatusDetailCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        SettingsCard(tint: status.state.tint) {
             Text(heading)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettingsSurface.secondaryText)
                 .textCase(.uppercase)
 
             HStack(alignment: .center, spacing: 10) {
@@ -389,7 +524,7 @@ private struct OperationalStatusDetailCard: View {
             Text(status.title)
                 .font(.title3.weight(.semibold))
             Text(status.detail)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettingsSurface.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: action) {
@@ -397,12 +532,6 @@ private struct OperationalStatusDetailCard: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-        }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(status.state.tint.opacity(0.22), lineWidth: 1)
         }
     }
 }
@@ -694,7 +823,7 @@ private struct CloudAIStep: View {
                 secondaryAction: nil
             )
 
-            VStack(alignment: .leading, spacing: 12) {
+            SettingsCard(tint: model.health(for: .cloudAI).state.tint) {
                 Text("Gemini Setup")
                     .font(.headline)
 
@@ -717,12 +846,6 @@ private struct CloudAIStep: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.canSaveGeminiConfig)
-            }
-            .padding(14)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
 
             Toggle("Enable Cloud AI suggestions", isOn: $model.profile.cloudAIEnabled)
@@ -753,7 +876,7 @@ private struct PrivacyStep: View {
                 "Cloud AI is off unless you save Gemini credentials and enable the toggle in AI settings."
             ])
 
-            VStack(alignment: .leading, spacing: 12) {
+            SettingsCard(tint: Color.red) {
                 Text("Local Data")
                     .font(.headline)
                 Button("Delete Generated Suggestions") {
@@ -767,12 +890,6 @@ private struct PrivacyStep: View {
                 }
             }
             .controlSize(.small)
-            .padding(14)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
         }
     }
 }
@@ -1069,9 +1186,10 @@ private struct StepHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.largeTitle.weight(.semibold))
+                .font(.title2.weight(.semibold))
+                .lineLimit(2)
             Text(subtitle)
-                .font(.body)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1115,19 +1233,23 @@ private struct SourceSetupCard: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
+        SettingsCard(tint: status.state.tint) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label(title, systemImage: systemImage)
                     .font(.headline)
-                Spacer()
-                if let readiness {
-                    ReadinessPill(readiness: readiness)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    if let readiness {
+                        ReadinessPill(readiness: readiness)
+                    }
+                    HealthStatusPill(health: status)
+                    Spacer(minLength: 0)
                 }
-                HealthStatusPill(health: status)
             }
 
             Text(detail)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettingsSurface.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let primaryTitle, let primarySystemImage, let action {
@@ -1142,15 +1264,9 @@ private struct SourceSetupCard: View {
             if let helperText {
                 Text(helperText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettingsSurface.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
@@ -1167,7 +1283,7 @@ private struct PermissionCard: View {
     var helperText: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        SettingsCard(tint: health.state.tint) {
             HStack {
                 Label(health.kind.displayName, systemImage: health.kind.systemImage)
                     .font(.headline)
@@ -1176,7 +1292,7 @@ private struct PermissionCard: View {
             }
 
             Text(detail)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SettingsSurface.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
@@ -1195,15 +1311,9 @@ private struct PermissionCard: View {
             if let helperText {
                 Text(helperText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SettingsSurface.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
@@ -1212,23 +1322,33 @@ private struct PermissionSummaryRow: View {
     var health: PermissionHealth
 
     var body: some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
             Image(systemName: health.kind.systemImage)
-                .frame(width: 22)
-                .foregroundStyle(health.state.tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(health.kind.displayName)
-                    .font(.callout.weight(.medium))
-                Text(health.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .frame(width: 20)
+                    .foregroundStyle(health.state.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(health.kind.displayName)
+                        .font(.callout.weight(.medium))
+                    Text(health.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer()
-            HealthStatusPill(health: health)
+
+            HStack {
+                HealthStatusPill(health: health)
+                Spacer(minLength: 0)
+            }
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(SettingsSurface.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(health.state.tint.opacity(0.12), lineWidth: 1)
+        }
     }
 }
 
@@ -1242,26 +1362,36 @@ private struct SourceSummaryRow: View {
     var showsHealth = true
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .frame(width: 22)
-                .foregroundStyle(health.state.tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.medium))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: systemImage)
+                    .frame(width: 20)
+                    .foregroundStyle(health.state.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.medium))
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer()
-            ReadinessPill(readiness: readiness)
-            if showsHealth {
-                HealthStatusPill(health: health)
+
+            HStack(spacing: 6) {
+                ReadinessPill(readiness: readiness)
+                if showsHealth {
+                    HealthStatusPill(health: health)
+                }
+                Spacer(minLength: 0)
             }
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(SettingsSurface.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(health.state.tint.opacity(0.12), lineWidth: 1)
+        }
     }
 
     private var detail: String {
@@ -1276,6 +1406,8 @@ private struct SourceSummaryRow: View {
 }
 
 private struct SetupPathBox: View {
+    @Environment(\.loopPalette) private var palette
+
     var lines: [String]
 
     var body: some View {
@@ -1288,7 +1420,11 @@ private struct SetupPathBox: View {
             }
         }
         .padding(12)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(palette.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.primary.opacity(0.12), lineWidth: 1)
+        }
     }
 }
 
@@ -1382,30 +1518,28 @@ private struct OperationalStatusSidebarView: View {
 }
 
 private struct GuideSection: View {
+    @Environment(\.loopPalette) private var palette
+
     var systemImage: String
     var title: String
     var detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(detail)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        SettingsCard(tint: palette.primary) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(palette.primary)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                    Text(detail)
+                        .foregroundStyle(SettingsSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
