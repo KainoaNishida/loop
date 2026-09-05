@@ -46,7 +46,7 @@ private enum LoopTheme {
 
 private enum LoopQueueLayout {
     static let appHeight: CGFloat = 620
-    static let cardHeight: CGFloat = 320
+    static let cardHeight: CGFloat = 450
     static let cardMaxWidth: CGFloat = 540
 }
 
@@ -138,7 +138,7 @@ struct InboxView: View {
             .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background {
             ZStack(alignment: .bottom) {
                 LoopTheme.headerFill
@@ -702,7 +702,7 @@ private struct DoneHistoryView: View {
                     }
                 }
                 .padding(16)
-                .frame(maxWidth: LoopQueueLayout.cardMaxWidth, maxHeight: LoopQueueLayout.cardHeight + 72, alignment: .topLeading)
+                .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
                 .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
