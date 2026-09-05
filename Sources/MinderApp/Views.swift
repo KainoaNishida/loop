@@ -650,6 +650,7 @@ private struct QueueCompletionButton: View {
 
 private struct DoneHistoryView: View {
     @Environment(\.loopPalette) private var palette
+    @State private var openedItem: LoopCompletedQueueItem?
 
     var items: [LoopCompletedQueueItem]
     var undo: (LoopCompletedQueueItem) -> Void
@@ -673,11 +674,18 @@ private struct DoneHistoryView: View {
                     }
 
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 10) {
                             ForEach(items) { item in
-                                DoneHistoryRow(item: item) {
-                                    undo(item)
-                                }
+                                DoneHistoryRow(
+                                    item: item,
+                                    open: { openedItem = item },
+                                    undo: {
+                                        if openedItem?.id == item.id {
+                                            openedItem = nil
+                                        }
+                                        undo(item)
+                                    }
+                                )
                             }
                         }
                         .padding(.vertical, 2)
@@ -694,6 +702,12 @@ private struct DoneHistoryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(item: $openedItem) { item in
+            DoneHistoryDetailView(item: item) {
+                openedItem = nil
+                undo(item)
+            }
+        }
     }
 }
 
@@ -701,47 +715,179 @@ private struct DoneHistoryRow: View {
     @Environment(\.loopPalette) private var palette
 
     var item: LoopCompletedQueueItem
+    var open: () -> Void
     var undo: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(palette.completion.opacity(0.13))
-                Image(systemName: item.systemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(palette.completion)
-            }
-            .frame(width: 30, height: 30)
+        HStack(spacing: 8) {
+            Button(action: open) {
+                HStack(spacing: 11) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(palette.completion.opacity(0.13))
+                        Image(systemName: item.systemImage)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(palette.completion)
+                    }
+                    .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(LoopTheme.text)
-                    .lineLimit(1)
-                Text(item.updatedAt.relativeLabel)
-                    .font(.caption)
-                    .foregroundStyle(LoopTheme.secondaryText)
-                    .lineLimit(1)
-            }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(LoopTheme.text)
+                            .lineLimit(1)
 
-            Spacer(minLength: 8)
+                        Text(item.summary)
+                            .font(.caption)
+                            .foregroundStyle(LoopTheme.secondaryText)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text("Done \(item.updatedAt.relativeLabel)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 6)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LoopTheme.tertiaryText)
+                }
+                .contentShape(Rectangle())
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .help("Open done item")
 
             Button {
                 undo()
             } label: {
-                Label("Undo", systemImage: "arrow.uturn.backward")
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 26, height: 26)
             }
             .controlSize(.small)
             .tint(palette.completion)
+            .buttonStyle(.borderless)
+            .help("Undo Done")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(LoopTheme.completedFill, in: RoundedRectangle(cornerRadius: 8))
+        .padding(10)
+        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(palette.completion.opacity(0.16), lineWidth: 1)
+                .stroke(palette.completion.opacity(0.18), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
+    }
+}
+
+private struct DoneHistoryDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.loopPalette) private var palette
+
+    var item: LoopCompletedQueueItem
+    var undo: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(palette.completion.opacity(0.14))
+                    Image(systemName: item.systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(palette.completion)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(LoopTheme.text)
+                        .lineLimit(2)
+                    Text("Done \(item.updatedAt.detailLabel)")
+                        .font(.caption)
+                        .foregroundStyle(LoopTheme.secondaryText)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LoopTheme.secondaryText)
+                .help("Close")
+            }
+            .padding(18)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    switch item {
+                    case .suggestion(let suggestion):
+                        DetailPanel(title: "Suggested Action", systemImage: "checkmark.circle") {
+                            Text(suggestion.action.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        DetailPanel(title: "Evidence", systemImage: "quote.bubble") {
+                            Text(suggestion.evidence.snippet)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        DetailPanel(title: "Context", systemImage: "info.circle") {
+                            VStack(spacing: 8) {
+                                MetadataRow(title: "Alert", value: suggestion.title)
+                                MetadataRow(title: "Source", value: suggestion.evidence.sourceApp)
+                                MetadataRow(title: "Message", value: suggestion.evidence.sourceTimestamp.detailLabel)
+                            }
+                        }
+                    case .manual(let manualItem):
+                        DetailPanel(title: "Task", systemImage: manualItem.kind.systemImage) {
+                            Text(manualItem.body?.nilIfBlank ?? manualItem.title)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        DetailPanel(title: "Context", systemImage: "info.circle") {
+                            VStack(spacing: 8) {
+                                MetadataRow(title: "Created", value: manualItem.createdAt.relativeLabel)
+                                MetadataRow(title: "Updated", value: manualItem.updatedAt.relativeLabel)
+                            }
+                        }
+                    }
+                }
+                .padding(18)
+            }
+
+            Divider()
+
+            HStack {
+                Button {
+                    undo()
+                } label: {
+                    Label("Undo Done", systemImage: "arrow.uturn.backward")
+                }
+                .tint(palette.completion)
+
+                Spacer()
+
+                Button("Close") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .controlSize(.large)
+            .padding(18)
+        }
+        .frame(width: 440)
+        .frame(minHeight: 420)
+        .background(LoopTheme.pageFill)
     }
 }
 
@@ -786,6 +932,15 @@ private extension LoopCompletedQueueItem {
             return "checkmark.bubble"
         case .manual:
             return "checkmark.circle"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .suggestion(let suggestion):
+            return suggestion.action.text
+        case .manual(let item):
+            return item.body?.nilIfBlank ?? "Manual task"
         }
     }
 }
@@ -2011,6 +2166,13 @@ private extension Date {
 
     var detailLabel: String {
         DateFormatters.detail.string(from: self)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

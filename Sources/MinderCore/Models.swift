@@ -127,16 +127,34 @@ public enum ManualQueueItemState: String, Codable, CaseIterable, Hashable {
 
 public enum AppColorScheme: String, Codable, CaseIterable, Hashable {
     case ocean
+    case sky
+    case cyan
+    case teal
     case forest
+    case mint
+    case lime
+    case yellow
     case plum
+    case indigo
+    case pink
+    case ruby
     case ember
     case graphite
 
     public var displayName: String {
         switch self {
         case .ocean: return "Blue"
+        case .sky: return "Sky"
+        case .cyan: return "Cyan"
+        case .teal: return "Teal"
         case .forest: return "Green"
+        case .mint: return "Mint"
+        case .lime: return "Lime"
+        case .yellow: return "Yellow"
         case .plum: return "Purple"
+        case .indigo: return "Indigo"
+        case .pink: return "Pink"
+        case .ruby: return "Ruby"
         case .ember: return "Orange"
         case .graphite: return "Graphite"
         }

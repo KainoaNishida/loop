@@ -672,6 +672,10 @@ private struct AppearanceStep: View {
         model.profile.appColorScheme.palette
     }
 
+    private var swatchColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 34, maximum: 40), spacing: 10)]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
@@ -680,31 +684,79 @@ private struct AppearanceStep: View {
             )
 
             VStack(alignment: .leading, spacing: 14) {
-                LabeledContent("Accent color") {
-                    Picker("Accent color", selection: $model.profile.appColorScheme) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Accent color")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(SettingsSurface.text)
+                        Spacer()
+                        Text(model.profile.appColorScheme.displayName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(SettingsSurface.secondaryText)
+                    }
+
+                    LazyVGrid(columns: swatchColumns, alignment: .leading, spacing: 10) {
                         ForEach(AppColorScheme.allCases, id: \.rawValue) { scheme in
-                            Text(scheme.displayName).tag(scheme)
+                            AccentColorSwatchButton(
+                                scheme: scheme,
+                                isSelected: model.profile.appColorScheme == scheme,
+                                select: { model.profile.appColorScheme = scheme }
+                            )
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 520)
                 }
-
-                HStack(spacing: 10) {
-                    ForEach(0..<palette.swatches.count, id: \.self) { index in
-                        Circle()
-                            .fill(palette.swatches[index])
-                            .frame(width: 22, height: 22)
-                    }
+                .padding(14)
+                .frame(maxWidth: 360, alignment: .leading)
+                .background(SettingsSurface.controlFill, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(palette.primary.opacity(0.16), lineWidth: 1)
                 }
-                .padding(.horizontal, 2)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(model.profile.appColorScheme.displayName) accent color")
             }
         }
         .onChange(of: model.profile.appColorScheme) { _, _ in
             model.saveProfile()
         }
+    }
+}
+
+private struct AccentColorSwatchButton: View {
+    var scheme: AppColorScheme
+    var isSelected: Bool
+    var select: () -> Void
+
+    private var color: Color {
+        scheme.palette.primary
+    }
+
+    var body: some View {
+        Button(action: select) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(color)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.28), radius: 1, y: 1)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(isSelected ? SettingsSurface.text : SettingsSurface.separator.opacity(0.65), lineWidth: isSelected ? 2 : 1)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(.white.opacity(isSelected ? 0.50 : 0.24), lineWidth: 1)
+                    .padding(3)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(scheme.displayName)
+        .accessibilityLabel("\(scheme.displayName) accent color")
+        .accessibilityValue(isSelected ? "Selected" : "")
     }
 }
 
