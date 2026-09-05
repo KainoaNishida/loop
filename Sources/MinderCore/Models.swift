@@ -134,10 +134,10 @@ public enum AppColorScheme: String, Codable, CaseIterable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .ocean: return "Ocean"
-        case .forest: return "Forest"
-        case .plum: return "Plum"
-        case .ember: return "Ember"
+        case .ocean: return "Blue"
+        case .forest: return "Green"
+        case .plum: return "Purple"
+        case .ember: return "Orange"
         case .graphite: return "Graphite"
         }
     }

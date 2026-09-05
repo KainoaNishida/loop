@@ -67,10 +67,12 @@ struct InboxView: View {
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if model.selectedTab != .settings {
-                Divider()
-                footer
-            }
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
+                .animation(nil, value: model.selectedTab)
+            Divider()
+            footer
         }
         .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: LoopQueueLayout.appHeight, idealHeight: LoopQueueLayout.appHeight, maxHeight: LoopQueueLayout.appHeight)
         .environment(\.loopPalette, palette)
@@ -83,13 +85,13 @@ struct InboxView: View {
             HStack(spacing: 10) {
                 LoopAppMark()
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("Loop")
-                        .font(.title2.weight(.semibold))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(LoopTheme.text)
                     HStack(spacing: 7) {
                         Text(lastUpdatedText)
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(LoopTheme.secondaryText)
                             .lineLimit(1)
                         if model.selectedTab == .queue {
@@ -98,7 +100,9 @@ struct InboxView: View {
                             DoneCountBadge(count: model.recentCompletedQueueItems.count)
                         }
                     }
+                    .frame(height: 14, alignment: .leading)
                 }
+                .offset(y: 1)
             }
 
             Spacer()
@@ -137,8 +141,9 @@ struct InboxView: View {
             }
             .controlSize(.small)
         }
+        .frame(height: 40)
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .background {
             ZStack(alignment: .bottom) {
                 LoopTheme.headerFill
@@ -298,20 +303,10 @@ private struct LoopAppMark: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(palette.primary)
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.title3.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
         }
-        .frame(width: 34, height: 34)
-        .overlay(alignment: .bottomTrailing) {
-            Circle()
-                .fill(palette.completion)
-                .frame(width: 10, height: 10)
-                .overlay {
-                    Circle()
-                        .stroke(LoopTheme.headerFill, lineWidth: 2)
-                }
-                .offset(x: 2, y: 2)
-        }
+        .frame(width: 30, height: 30)
         .accessibilityLabel("Loop")
     }
 }
@@ -471,33 +466,25 @@ private struct LoopSuggestionCardView: View {
 
         VStack(spacing: 10) {
             AlertCardShell(tint: tint) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 10) {
                         AlertGlyph(systemImage: card.suggestion.type.systemImage, tint: tint)
-                        VStack(alignment: .leading, spacing: 4) {
-                            StatusPill(
-                                text: card.suggestion.type.displayName,
-                                systemImage: card.suggestion.type.systemImage,
-                                tint: tint
-                            )
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(card.suggestion.evidence.threadTitle)
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(LoopTheme.text)
                                 .lineLimit(1)
                             Text(card.suggestion.title)
-                                .font(.callout.weight(.medium))
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(LoopTheme.secondaryText)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        VStack(alignment: .trailing, spacing: 6) {
-                            ConfidenceBadge(confidence: card.suggestion.confidence)
-                            Text(card.suggestion.evidence.sourceTimestamp.relativeLabel)
-                                .font(.caption2)
-                                .foregroundStyle(LoopTheme.tertiaryText)
-                                .lineLimit(1)
-                        }
+                        Text(card.suggestion.evidence.sourceTimestamp.relativeLabel)
+                            .font(.caption2)
+                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .lineLimit(1)
                     }
 
                     SuggestedActionStrip(text: card.suggestion.action.text, tint: tint)
@@ -529,19 +516,14 @@ private struct ManualQueueItemCardView: View {
 
         VStack(spacing: 10) {
             AlertCardShell(tint: tint) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 10) {
                         AlertGlyph(systemImage: item.kind.systemImage, tint: tint)
-                        VStack(alignment: .leading, spacing: 4) {
-                            StatusPill(
-                                text: item.kind.displayName,
-                                systemImage: item.kind.systemImage,
-                                tint: tint
-                            )
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(LoopTheme.text)
-                                .lineLimit(2)
+                                .lineLimit(1)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
@@ -592,7 +574,7 @@ private struct AlertCardShell<Content: View>: View {
                 .fill(tint)
                 .frame(width: 5)
             content
-                .padding(14)
+                .padding(12)
                 .padding(.leading, 5)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -614,10 +596,10 @@ private struct AlertGlyph: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(tint.opacity(0.14))
             Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(tint)
         }
-        .frame(width: 38, height: 38)
+        .frame(width: 34, height: 34)
     }
 }
 
@@ -1749,11 +1731,11 @@ private struct StatusPill: View {
 
     var body: some View {
         Label(text, systemImage: systemImage)
-            .font(.caption.weight(.medium))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(tint)
             .lineLimit(1)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(tint.opacity(0.12), in: Capsule())
     }
 }
@@ -1814,8 +1796,8 @@ private struct ConfidenceBadge: View {
                 .font(.caption2.weight(.semibold).monospacedDigit())
         }
         .foregroundStyle(LoopTheme.secondaryText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
         .background(LoopTheme.controlFill, in: Capsule())
         .help("Confidence")
     }

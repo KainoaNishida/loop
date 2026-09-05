@@ -168,8 +168,6 @@ struct LoopSettingsPanelView: View {
                         .frame(maxWidth: 640, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                Divider()
-                footer
             }
         }
         .environment(\.loopPalette, palette)
@@ -200,8 +198,6 @@ struct LoopSettingsPanelView: View {
             }
 
             Spacer()
-
-            OperationalStatusSidebarView(status: model.operationalStatus)
         }
         .padding(14)
         .frame(width: 192)
@@ -306,16 +302,6 @@ private struct SettingsLoopMark: View {
                 .foregroundStyle(.white)
         }
         .frame(width: 30, height: 30)
-        .overlay(alignment: .bottomTrailing) {
-            Circle()
-                .fill(palette.completion)
-                .frame(width: 9, height: 9)
-                .overlay {
-                    Circle()
-                        .stroke(SettingsSurface.controlFill, lineWidth: 2)
-                }
-                .offset(x: 2, y: 2)
-        }
     }
 }
 
@@ -690,12 +676,12 @@ private struct AppearanceStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Theme",
-                subtitle: "Queue, controls, and status accents."
+                subtitle: "Choose one accent color for Loop."
             )
 
             VStack(alignment: .leading, spacing: 14) {
-                LabeledContent("Color scheme") {
-                    Picker("Color scheme", selection: $model.profile.appColorScheme) {
+                LabeledContent("Accent color") {
+                    Picker("Accent color", selection: $model.profile.appColorScheme) {
                         ForEach(AppColorScheme.allCases, id: \.rawValue) { scheme in
                             Text(scheme.displayName).tag(scheme)
                         }
@@ -713,7 +699,7 @@ private struct AppearanceStep: View {
                 }
                 .padding(.horizontal, 2)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(model.profile.appColorScheme.displayName) theme colors")
+                .accessibilityLabel("\(model.profile.appColorScheme.displayName) accent color")
             }
         }
         .onChange(of: model.profile.appColorScheme) { _, _ in

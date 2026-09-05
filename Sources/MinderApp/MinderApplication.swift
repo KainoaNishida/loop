@@ -8,7 +8,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     private static let backgroundSyncInterval: TimeInterval = 15 * 60
     private static let popoverWidth: CGFloat = 760
     private static let queuePopoverHeight: CGFloat = 620
-    private static let settingsPopoverHeight: CGFloat = 680
+    private static let settingsPopoverHeight: CGFloat = queuePopoverHeight
 
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
