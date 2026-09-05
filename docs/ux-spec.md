@@ -2,7 +2,7 @@
 
 ## UX Intent
 
-Loop should feel like a quiet Mac utility: present when needed, small when not. The main surface is a menu bar inbox. Larger windows are used only for onboarding, settings, thread review, and action confirmation.
+Nudge should feel like a quiet Mac utility: present when needed, small when not. The main surface is a menu bar inbox. Larger windows are used only for onboarding, settings, thread review, and action confirmation.
 
 The UI should emphasize triage, evidence, and confident action.
 
@@ -21,7 +21,7 @@ The UI should emphasize triage, evidence, and confident action.
 
 The menu bar item shows:
 
-- Loop icon.
+- Nudge icon.
 - Optional badge count for new high-priority suggestions.
 - Warning indicator when a core permission is missing or revoked.
 
@@ -65,7 +65,7 @@ It includes:
 - Editable action fields where relevant.
 - Confirm, snooze, dismiss, and complete controls.
 
-The evidence area must make it obvious that Loop is interpreting a specific conversation, not inventing work.
+The evidence area must make it obvious that Nudge is interpreting a specific conversation, not inventing work.
 
 ## Action Confirmation
 
@@ -115,8 +115,8 @@ Recommended steps:
 Each step includes:
 
 - Why this permission or source is needed.
-- What Loop can do with it.
-- What Loop will not do with it.
+- What Nudge can do with it.
+- What Nudge will not do with it.
 - Current status.
 - Open System Settings button where applicable.
 - Retry/check button.
@@ -135,7 +135,7 @@ Repair screens must:
 
 Example degraded state:
 
-"Apple Messages import is paused because Full Disk Access is not available. Loop can still show existing suggestions and manual notes."
+"Apple Messages import is paused because Full Disk Access is not available. Nudge can still show existing suggestions and manual notes."
 
 ## Settings
 

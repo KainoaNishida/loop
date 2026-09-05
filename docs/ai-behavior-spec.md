@@ -4,7 +4,7 @@
 
 The AI system turns conversations into evidence-backed suggestions. It should help users notice likely obligations while avoiding overconfident or unsupported claims.
 
-Loop's AI behavior should be useful, conservative, inspectable, and easy to correct.
+Nudge's AI behavior should be useful, conservative, inspectable, and easy to correct.
 
 ## Processing Modes
 
@@ -100,7 +100,7 @@ Deadline extraction should consider:
 - Sender intent.
 - Whether the message is asking, proposing, or committing.
 
-When a date is ambiguous, Loop should:
+When a date is ambiguous, Nudge should:
 
 - Prefer asking for confirmation in the action sheet.
 - Avoid creating an exact calendar event without user review.
@@ -126,7 +126,7 @@ The system should avoid nudging for:
 
 ## Duplicate Suppression
 
-Loop must avoid repeated suggestions for the same underlying obligation.
+Nudge must avoid repeated suggestions for the same underlying obligation.
 
 Deduplication inputs:
 

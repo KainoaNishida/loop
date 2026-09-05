@@ -56,7 +56,7 @@ public final class ConversationImporter {
     }
 
     private static func sampleConversationsURL() -> URL? {
-        let bundleNames = ["Loop_MinderCore.bundle", "Minder_MinderCore.bundle"]
+        let bundleNames = ["Nudge_MinderCore.bundle", "Loop_MinderCore.bundle", "Minder_MinderCore.bundle"]
         let fileName = "sample-conversations.json"
 
         let searchRoots = [

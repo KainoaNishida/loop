@@ -2,7 +2,7 @@
 
 ## Privacy Position
 
-Loop processes highly sensitive personal conversations. The default position is local-first processing, explicit consent, data minimization, and visible control.
+Nudge processes highly sensitive personal conversations. The default position is local-first processing, explicit consent, data minimization, and visible control.
 
 The app should never imply that privacy is solved merely because data is local. Local data must still be protected against accidental exposure, overbroad logging, insecure backups, and unclear deletion.
 
@@ -157,7 +157,7 @@ Export controls:
 
 ## Auditability
 
-Loop should keep a privacy-preserving audit log for:
+Nudge should keep a privacy-preserving audit log for:
 
 - Permission state changes.
 - Connector sync runs.
@@ -203,7 +203,7 @@ Controls:
 
 ## Legal and Policy Notes
 
-This document is not legal advice. Before launch, Loop needs review of:
+This document is not legal advice. Before launch, Nudge needs review of:
 
 - Privacy policy.
 - Terms of service.

@@ -271,7 +271,7 @@ final class ImporterStoreTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MinderCoreTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let configURL = directory.appendingPathComponent(".loop.env")
+        let configURL = directory.appendingPathComponent(".nudge.env")
         try """
         OTHER_VALUE=keep-me
         GEMINI_API_KEY=old-key
@@ -303,7 +303,7 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertTrue(valid.isValid)
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func testGeminiDiagnosticRunSaveFetchAndClearKeepsOtherData() throws {
         let store = try makeStore()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -1334,11 +1334,11 @@ final class ImporterStoreTests: XCTestCase {
     }
 
     func testReleaseChannelControlsBundleIDAndDataDirectory() {
-        XCTAssertEqual(LoopReleaseChannel.dev.bundleIdentifier, "com.kainoanishida.loop.dev")
-        XCTAssertEqual(LoopReleaseChannel.dev.appSupportDirectoryName, "LoopDev")
-        XCTAssertEqual(LoopReleaseChannel.alpha.bundleIdentifier, "com.kainoanishida.loop.alpha")
-        XCTAssertEqual(LoopReleaseChannel.alpha.appSupportDirectoryName, "LoopAlpha")
-        XCTAssertEqual(LoopReleaseChannel.current(environment: ["LOOP_RELEASE_CHANNEL": "alpha"]), .alpha)
+        XCTAssertEqual(NudgeReleaseChannel.dev.bundleIdentifier, "com.kainoanishida.nudge.dev")
+        XCTAssertEqual(NudgeReleaseChannel.dev.appSupportDirectoryName, "NudgeDev")
+        XCTAssertEqual(NudgeReleaseChannel.alpha.bundleIdentifier, "com.kainoanishida.nudge.alpha")
+        XCTAssertEqual(NudgeReleaseChannel.alpha.appSupportDirectoryName, "NudgeAlpha")
+        XCTAssertEqual(NudgeReleaseChannel.current(environment: ["NUDGE_RELEASE_CHANNEL": "alpha"]), .alpha)
     }
 
     func testStartupCleanupRemovesLegacyGmailData() throws {
@@ -1656,7 +1656,7 @@ final class ImporterStoreTests: XCTestCase {
         XCTAssertEqual(messages.map(\.body), ["You didn't get me bagels...", "[Sent reply without plain text]"])
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func testAppleMessagesTextDiagnosticsCountsAttributedBodiesAndNonTextRows() throws {
         let cutoff = Date(timeIntervalSinceNow: -30 * 86_400)
         let databaseURL = try makeMessagesDatabaseForTextDiagnostics()
@@ -1945,7 +1945,7 @@ final class ImporterStoreTests: XCTestCase {
     }
 
     func testRuntimeContextDisablesBundleOnlyPermissionAPIsForSwiftPMExecutable() {
-        let swiftPMContext = AppRuntimeContext(bundleURL: URL(fileURLWithPath: "/tmp/Loop/.build/arm64-apple-macosx/debug/"))
+        let swiftPMContext = AppRuntimeContext(bundleURL: URL(fileURLWithPath: "/tmp/Nudge/.build/arm64-apple-macosx/debug/"))
 
         XCTAssertFalse(swiftPMContext.isAppBundle)
         XCTAssertFalse(swiftPMContext.supportsUserNotifications)
@@ -1953,7 +1953,7 @@ final class ImporterStoreTests: XCTestCase {
     }
 
     func testRuntimeContextEnablesBundleOnlyPermissionAPIsForAppBundle() {
-        let appContext = AppRuntimeContext(bundleURL: URL(fileURLWithPath: "/Applications/Loop.app"))
+        let appContext = AppRuntimeContext(bundleURL: URL(fileURLWithPath: "/Applications/Nudge.app"))
 
         XCTAssertTrue(appContext.isAppBundle)
         XCTAssertTrue(appContext.supportsUserNotifications)

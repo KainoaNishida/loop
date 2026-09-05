@@ -2,7 +2,7 @@
 
 ## Overview
 
-Loop is a macOS menu bar assistant that monitors user-authorized Apple Messages locally and creates actionable suggestions from them. The first version supports Apple Messages through local, read-only ingestion.
+Nudge is a macOS menu bar assistant that monitors user-authorized Apple Messages locally and creates actionable suggestions from them. The first version supports Apple Messages through local, read-only ingestion.
 
 The app should reduce the user's ongoing manual effort after a deliberate setup process.
 
@@ -31,13 +31,13 @@ Wants assistance but needs clear data boundaries, deletion controls, and confide
 
 ## User Stories
 
-- As a user, I want Loop to notice when someone mentions a deadline so I can add it to my calendar.
-- As a user, I want Loop to remind me when I have not replied to an important message.
+- As a user, I want Nudge to notice when someone mentions a deadline so I can add it to my calendar.
+- As a user, I want Nudge to remind me when I have not replied to an important message.
 - As a user, I want to see the message evidence behind every suggestion.
-- As a user, I want to approve actions before Loop writes to Calendar or Reminders.
+- As a user, I want to approve actions before Nudge writes to Calendar or Reminders.
 - As a user, I want to know exactly which permissions and sources are active.
 - As a user, I want to delete all local conversation data and derived AI artifacts.
-- As a user, I want Loop to keep working locally when cloud AI is disabled.
+- As a user, I want Nudge to keep working locally when cloud AI is disabled.
 
 ## Onboarding Requirements
 
@@ -80,7 +80,7 @@ Each permission or source must show one of these health states:
 
 ## Suggestion Requirements
 
-Loop must create suggestions for:
+Nudge must create suggestions for:
 
 - Stale reply.
 - Unanswered question.
@@ -119,7 +119,7 @@ Suggestion states:
 
 ## Action Requirements
 
-Loop may draft actions automatically, but must require confirmation before external writes.
+Nudge may draft actions automatically, but must require confirmation before external writes.
 
 Supported v1 action targets:
 
@@ -138,7 +138,7 @@ Before confirmation, the user must be able to review:
 - Target app.
 - Any missing permission.
 
-Loop must prevent duplicate calendar/reminder creation by storing an action fingerprint for confirmed suggestions.
+Nudge must prevent duplicate calendar/reminder creation by storing an action fingerprint for confirmed suggestions.
 
 ## Menu Bar Inbox Requirements
 

@@ -1,7 +1,7 @@
 import SwiftUI
 import MinderCore
 
-private enum LoopTheme {
+private enum NudgeTheme {
     static let pageFill = Color(nsColor: .windowBackgroundColor)
     static let headerFill = dynamicColor(
         light: NSColor(calibratedWhite: 0.98, alpha: 1),
@@ -44,7 +44,7 @@ private enum LoopTheme {
     }
 }
 
-private enum LoopQueueLayout {
+private enum NudgeQueueLayout {
     static let appHeight: CGFloat = 620
     static let cardHeight: CGFloat = 450
     static let cardMaxWidth: CGFloat = 540
@@ -54,7 +54,7 @@ struct InboxView: View {
     @ObservedObject var model: MinderViewModel
     @ObservedObject var settingsModel: OnboardingViewModel
 
-    private var palette: LoopPalette {
+    private var palette: NudgePalette {
         if model.selectedTab == .settings {
             return settingsModel.profile.appColorScheme.palette
         }
@@ -74,25 +74,25 @@ struct InboxView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: LoopQueueLayout.appHeight, idealHeight: LoopQueueLayout.appHeight, maxHeight: LoopQueueLayout.appHeight)
-        .environment(\.loopPalette, palette)
+        .frame(minWidth: 720, idealWidth: 760, maxWidth: .infinity, minHeight: NudgeQueueLayout.appHeight, idealHeight: NudgeQueueLayout.appHeight, maxHeight: NudgeQueueLayout.appHeight)
+        .environment(\.nudgePalette, palette)
         .tint(palette.primary)
-        .background(LoopTheme.pageFill)
+        .background(NudgeTheme.pageFill)
     }
 
     private var header: some View {
         HStack(alignment: .center, spacing: 14) {
             HStack(spacing: 10) {
-                LoopAppMark()
+                NudgeAppMark()
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Loop")
+                    Text("Nudge")
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(LoopTheme.text)
+                        .foregroundStyle(NudgeTheme.text)
                     HStack(spacing: 7) {
                         Text(lastUpdatedText)
                             .font(.caption2)
-                            .foregroundStyle(LoopTheme.secondaryText)
+                            .foregroundStyle(NudgeTheme.secondaryText)
                             .lineLimit(1)
                         if model.selectedTab == .queue {
                             QueueCountBadge(count: model.activeQueueCount)
@@ -123,7 +123,7 @@ struct InboxView: View {
                 .disabled(!model.canGenerateSuggestions)
                 .help("Refresh messages and alerts")
 
-                LoopMainTabSwitcher(
+                NudgeMainTabSwitcher(
                     selectedTab: Binding(
                         get: { model.selectedTab },
                         set: { model.selectedTab = $0 }
@@ -133,11 +133,11 @@ struct InboxView: View {
                 )
 
                 Button {
-                    model.quitLoop()
+                    model.quitNudge()
                 } label: {
                     Image(systemName: "power")
                 }
-                .help("Quit Loop")
+                .help("Quit Nudge")
             }
             .controlSize(.small)
         }
@@ -146,7 +146,7 @@ struct InboxView: View {
         .padding(.vertical, 7)
         .background {
             ZStack(alignment: .bottom) {
-                LoopTheme.headerFill
+                NudgeTheme.headerFill
                 Rectangle()
                     .fill(palette.primary.opacity(0.16))
                     .frame(height: 2)
@@ -165,7 +165,7 @@ struct InboxView: View {
                 undo: { model.undoCompleted($0) }
             )
         case .settings:
-            LoopSettingsPanelView(model: settingsModel)
+            NudgeSettingsPanelView(model: settingsModel)
         }
     }
 
@@ -185,7 +185,7 @@ struct InboxView: View {
                     ForEach(model.queueItems) { item in
                         switch item {
                         case .suggestion(let card):
-                            LoopSuggestionCardView(
+                            NudgeSuggestionCardView(
                                 card: card,
                                 complete: { model.complete(card.suggestion) }
                             )
@@ -235,7 +235,7 @@ struct InboxView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(LoopTheme.elevatedFill)
+        .background(NudgeTheme.elevatedFill)
     }
 
     private var lastUpdatedText: String {
@@ -250,7 +250,7 @@ struct InboxView: View {
 }
 
 private struct OperationalStatusButton: View {
-    var status: LoopOperationalStatus
+    var status: NudgeOperationalStatus
     var isRefreshing: Bool
     var action: () -> Void
 
@@ -278,7 +278,7 @@ private struct OperationalStatusButton: View {
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(LoopTheme.tertiaryText)
+                    .foregroundStyle(NudgeTheme.tertiaryText)
             }
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
@@ -295,8 +295,8 @@ private struct OperationalStatusButton: View {
     }
 }
 
-private struct LoopAppMark: View {
-    @Environment(\.loopPalette) private var palette
+private struct NudgeAppMark: View {
+    @Environment(\.nudgePalette) private var palette
 
     var body: some View {
         ZStack {
@@ -307,7 +307,7 @@ private struct LoopAppMark: View {
                 .foregroundStyle(.white)
         }
         .frame(width: 30, height: 30)
-        .accessibilityLabel("Loop")
+        .accessibilityLabel("Nudge")
     }
 }
 
@@ -317,11 +317,11 @@ private struct QueueCountBadge: View {
     var body: some View {
         Label(count == 1 ? "1 alert" : "\(count) alerts", systemImage: "tray.full")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(LoopTheme.secondaryText)
+            .foregroundStyle(NudgeTheme.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(LoopTheme.controlFill, in: Capsule())
+            .background(NudgeTheme.controlFill, in: Capsule())
     }
 }
 
@@ -331,18 +331,18 @@ private struct DoneCountBadge: View {
     var body: some View {
         Label(count == 1 ? "1 done" : "\(count) done", systemImage: "clock.arrow.circlepath")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(LoopTheme.secondaryText)
+            .foregroundStyle(NudgeTheme.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(LoopTheme.controlFill, in: Capsule())
+            .background(NudgeTheme.controlFill, in: Capsule())
     }
 }
 
-private struct LoopMainTabSwitcher: View {
-    @Environment(\.loopPalette) private var palette
+private struct NudgeMainTabSwitcher: View {
+    @Environment(\.nudgePalette) private var palette
 
-    @Binding var selectedTab: LoopMainTab
+    @Binding var selectedTab: NudgeMainTab
     var activeCount: Int
     var doneCount: Int
 
@@ -353,14 +353,14 @@ private struct LoopMainTabSwitcher: View {
             tabButton(.settings, count: nil)
         }
         .padding(3)
-        .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 8))
+        .background(NudgeTheme.controlFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(LoopTheme.separator.opacity(0.55), lineWidth: 1)
+                .stroke(NudgeTheme.separator.opacity(0.55), lineWidth: 1)
         }
     }
 
-    private func tabButton(_ tab: LoopMainTab, count: Int?) -> some View {
+    private func tabButton(_ tab: NudgeMainTab, count: Int?) -> some View {
         Button {
             selectedTab = tab
         } label: {
@@ -372,10 +372,10 @@ private struct LoopMainTabSwitcher: View {
                 if let count {
                     Text("\(count)")
                         .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(selectedTab == tab ? .white.opacity(0.85) : LoopTheme.tertiaryText)
+                        .foregroundStyle(selectedTab == tab ? .white.opacity(0.85) : NudgeTheme.tertiaryText)
                 }
             }
-            .foregroundStyle(selectedTab == tab ? .white : LoopTheme.secondaryText)
+            .foregroundStyle(selectedTab == tab ? .white : NudgeTheme.secondaryText)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(selectedTab == tab ? palette.primary : Color.clear, in: RoundedRectangle(cornerRadius: 6))
@@ -386,15 +386,15 @@ private struct LoopMainTabSwitcher: View {
 }
 
 private struct QueueStageBackground: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var body: some View {
         ZStack {
-            LoopTheme.pageFill
+            NudgeTheme.pageFill
             LinearGradient(
                 colors: [
                     palette.primary.opacity(0.045),
-                    LoopTheme.pageFill,
+                    NudgeTheme.pageFill,
                     palette.tertiary.opacity(0.035)
                 ],
                 startPoint: .top,
@@ -412,21 +412,21 @@ private struct QueueFooterPageIndicator: View {
     var body: some View {
         Label("\(pageNumber)/\(pageCount)", systemImage: "rectangle.stack")
             .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(LoopTheme.secondaryText)
+            .foregroundStyle(NudgeTheme.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(LoopTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
+            .background(NudgeTheme.controlFill, in: RoundedRectangle(cornerRadius: 6))
             .overlay {
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(LoopTheme.separator.opacity(0.6), lineWidth: 1)
+                    .stroke(NudgeTheme.separator.opacity(0.6), lineWidth: 1)
             }
             .help("Queue page")
     }
 }
 
 private struct QueueArrowButton: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var systemImage: String
     var help: String
@@ -437,12 +437,12 @@ private struct QueueArrowButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.headline.weight(.bold))
-                .foregroundStyle(isEnabled ? palette.primary : LoopTheme.tertiaryText)
+                .foregroundStyle(isEnabled ? palette.primary : NudgeTheme.tertiaryText)
                 .frame(width: 38, height: 74)
-                .background(isEnabled ? palette.primary.opacity(0.10) : LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+                .background(isEnabled ? palette.primary.opacity(0.10) : NudgeTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isEnabled ? palette.primary.opacity(0.22) : LoopTheme.separator.opacity(0.45), lineWidth: 1)
+                        .stroke(isEnabled ? palette.primary.opacity(0.22) : NudgeTheme.separator.opacity(0.45), lineWidth: 1)
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -455,10 +455,10 @@ private struct QueueArrowButton: View {
     }
 }
 
-private struct LoopSuggestionCardView: View {
-    @Environment(\.loopPalette) private var palette
+private struct NudgeSuggestionCardView: View {
+    @Environment(\.nudgePalette) private var palette
 
-    var card: LoopSuggestionCard
+    var card: NudgeSuggestionCard
     var complete: () -> Void
 
     var body: some View {
@@ -472,18 +472,18 @@ private struct LoopSuggestionCardView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(card.suggestion.evidence.threadTitle)
                                 .font(.headline.weight(.semibold))
-                                .foregroundStyle(LoopTheme.text)
+                                .foregroundStyle(NudgeTheme.text)
                                 .lineLimit(1)
                             Text(card.suggestion.title)
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(LoopTheme.secondaryText)
+                                .foregroundStyle(NudgeTheme.secondaryText)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
                         Text(card.suggestion.evidence.sourceTimestamp.relativeLabel)
                             .font(.caption2)
-                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .foregroundStyle(NudgeTheme.tertiaryText)
                             .lineLimit(1)
                     }
 
@@ -501,12 +501,12 @@ private struct LoopSuggestionCardView: View {
                 action: complete
             )
         }
-        .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
+        .frame(maxWidth: NudgeQueueLayout.cardMaxWidth)
     }
 }
 
 private struct ManualQueueItemCardView: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var item: ManualQueueItem
     var complete: () -> Void
@@ -522,14 +522,14 @@ private struct ManualQueueItemCardView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .font(.headline.weight(.semibold))
-                                .foregroundStyle(LoopTheme.text)
+                                .foregroundStyle(NudgeTheme.text)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
                         Text(item.updatedAt.relativeLabel)
                             .font(.caption2)
-                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .foregroundStyle(NudgeTheme.tertiaryText)
                             .lineLimit(1)
                     }
 
@@ -538,12 +538,12 @@ private struct ManualQueueItemCardView: View {
                             if let body = item.body {
                                 Text(body)
                                     .font(.callout)
-                                    .foregroundStyle(LoopTheme.secondaryText)
+                                    .foregroundStyle(NudgeTheme.secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             } else {
                                 Text("No extra details.")
                                     .font(.callout)
-                                    .foregroundStyle(LoopTheme.tertiaryText)
+                                    .foregroundStyle(NudgeTheme.tertiaryText)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -554,7 +554,7 @@ private struct ManualQueueItemCardView: View {
 
             QueueCompletionButton(tint: tint, action: complete)
         }
-        .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
+        .frame(maxWidth: NudgeQueueLayout.cardMaxWidth)
     }
 }
 
@@ -569,7 +569,7 @@ private struct AlertCardShell<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            LoopTheme.cardFill
+            NudgeTheme.cardFill
             Rectangle()
                 .fill(tint)
                 .frame(width: 5)
@@ -578,7 +578,7 @@ private struct AlertCardShell<Content: View>: View {
                 .padding(.leading, 5)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .frame(maxWidth: .infinity, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: NudgeQueueLayout.cardHeight, maxHeight: NudgeQueueLayout.cardHeight, alignment: .topLeading)
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(tint.opacity(0.24), lineWidth: 1)
@@ -615,7 +615,7 @@ private struct SuggestedActionStrip: View {
                 .padding(.top, 2)
             Text(text)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(LoopTheme.secondaryText)
+                .foregroundStyle(NudgeTheme.secondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -649,28 +649,28 @@ private struct QueueCompletionButton: View {
 }
 
 private struct DoneHistoryView: View {
-    @Environment(\.loopPalette) private var palette
-    @State private var openedItem: LoopCompletedQueueItem?
+    @Environment(\.nudgePalette) private var palette
+    @State private var openedItem: NudgeCompletedQueueItem?
 
-    var items: [LoopCompletedQueueItem]
-    var undo: (LoopCompletedQueueItem) -> Void
+    var items: [NudgeCompletedQueueItem]
+    var undo: (NudgeCompletedQueueItem) -> Void
 
     var body: some View {
         ZStack {
             QueueStageBackground()
             if items.isEmpty {
                 DoneEmptyState()
-                    .frame(maxWidth: LoopQueueLayout.cardMaxWidth)
+                    .frame(maxWidth: NudgeQueueLayout.cardMaxWidth)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {
                         Text("Recently Done")
                             .font(.headline.weight(.semibold))
-                            .foregroundStyle(LoopTheme.text)
+                            .foregroundStyle(NudgeTheme.text)
                         Spacer()
                         Text(items.count == 1 ? "1 item" : "\(items.count) items")
                             .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(LoopTheme.secondaryText)
+                            .foregroundStyle(NudgeTheme.secondaryText)
                     }
 
                     ScrollView {
@@ -692,8 +692,8 @@ private struct DoneHistoryView: View {
                     }
                 }
                 .padding(16)
-                .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight, alignment: .topLeading)
-                .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+                .frame(maxWidth: NudgeQueueLayout.cardMaxWidth, minHeight: NudgeQueueLayout.cardHeight, maxHeight: NudgeQueueLayout.cardHeight, alignment: .topLeading)
+                .background(NudgeTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(palette.completion.opacity(0.20), lineWidth: 1)
@@ -712,9 +712,9 @@ private struct DoneHistoryView: View {
 }
 
 private struct DoneHistoryRow: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
-    var item: LoopCompletedQueueItem
+    var item: NudgeCompletedQueueItem
     var open: () -> Void
     var undo: () -> Void
 
@@ -734,18 +734,18 @@ private struct DoneHistoryRow: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(item.title)
                             .font(.callout.weight(.semibold))
-                            .foregroundStyle(LoopTheme.text)
+                            .foregroundStyle(NudgeTheme.text)
                             .lineLimit(1)
 
                         Text(item.summary)
                             .font(.caption)
-                            .foregroundStyle(LoopTheme.secondaryText)
+                            .foregroundStyle(NudgeTheme.secondaryText)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
 
                         Text("Done \(item.updatedAt.relativeLabel)")
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(LoopTheme.tertiaryText)
+                            .foregroundStyle(NudgeTheme.tertiaryText)
                             .lineLimit(1)
                     }
 
@@ -753,7 +753,7 @@ private struct DoneHistoryRow: View {
 
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(LoopTheme.tertiaryText)
+                        .foregroundStyle(NudgeTheme.tertiaryText)
                 }
                 .contentShape(Rectangle())
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -774,7 +774,7 @@ private struct DoneHistoryRow: View {
             .help("Undo Done")
         }
         .padding(10)
-        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .background(NudgeTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.completion.opacity(0.18), lineWidth: 1)
@@ -785,9 +785,9 @@ private struct DoneHistoryRow: View {
 
 private struct DoneHistoryDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
-    var item: LoopCompletedQueueItem
+    var item: NudgeCompletedQueueItem
     var undo: () -> Void
 
     var body: some View {
@@ -805,11 +805,11 @@ private struct DoneHistoryDetailView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.title)
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(LoopTheme.text)
+                        .foregroundStyle(NudgeTheme.text)
                         .lineLimit(2)
                     Text("Done \(item.updatedAt.detailLabel)")
                         .font(.caption)
-                        .foregroundStyle(LoopTheme.secondaryText)
+                        .foregroundStyle(NudgeTheme.secondaryText)
                 }
 
                 Spacer(minLength: 8)
@@ -822,7 +822,7 @@ private struct DoneHistoryDetailView: View {
                         .frame(width: 26, height: 26)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(LoopTheme.secondaryText)
+                .foregroundStyle(NudgeTheme.secondaryText)
                 .help("Close")
             }
             .padding(18)
@@ -887,12 +887,12 @@ private struct DoneHistoryDetailView: View {
         }
         .frame(width: 440)
         .frame(minHeight: 420)
-        .background(LoopTheme.pageFill)
+        .background(NudgeTheme.pageFill)
     }
 }
 
 private struct DoneEmptyState: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var body: some View {
         VStack(spacing: 12) {
@@ -906,17 +906,17 @@ private struct DoneEmptyState: View {
             }
             Text("Nothing done yet")
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(LoopTheme.text)
+                .foregroundStyle(NudgeTheme.text)
             Text("Alerts you mark Done will show up here briefly, so you can undo them if needed.")
                 .font(.caption)
-                .foregroundStyle(LoopTheme.secondaryText)
+                .foregroundStyle(NudgeTheme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 300)
         }
         .padding(.vertical, 24)
         .padding(.horizontal, 24)
-        .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
-        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: NudgeQueueLayout.cardMaxWidth, minHeight: NudgeQueueLayout.cardHeight, maxHeight: NudgeQueueLayout.cardHeight)
+        .background(NudgeTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.completion.opacity(0.22), lineWidth: 1)
@@ -925,7 +925,7 @@ private struct DoneEmptyState: View {
     }
 }
 
-private extension LoopCompletedQueueItem {
+private extension NudgeCompletedQueueItem {
     var systemImage: String {
         switch self {
         case .suggestion:
@@ -947,7 +947,7 @@ private extension LoopCompletedQueueItem {
 
 private struct ConversationPreview: View {
     var messages: [Message]
-    var platform: LoopMessagePlatform = .unknown
+    var platform: NudgeMessagePlatform = .unknown
 
     var body: some View {
         Group {
@@ -966,10 +966,10 @@ private struct ConversationPreview: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(LoopTheme.secondaryFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+                    .background(NudgeTheme.secondaryFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(LoopTheme.separator.opacity(0.65), lineWidth: 1)
+                            .stroke(NudgeTheme.separator.opacity(0.65), lineWidth: 1)
                     }
                     .onAppear {
                         scrollToLatestMessage(with: proxy)
@@ -986,7 +986,7 @@ private struct ConversationPreview: View {
     private var emptyState: some View {
         Text("No recent messages available.")
             .font(.caption)
-            .foregroundStyle(LoopTheme.secondaryText)
+            .foregroundStyle(NudgeTheme.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
     }
@@ -1001,7 +1001,7 @@ private struct ConversationPreview: View {
 
 private struct MessageBubbleRow: View {
     var message: Message
-    var platform: LoopMessagePlatform
+    var platform: NudgeMessagePlatform
 
     var body: some View {
         let content = MessageBubbleContent(body: message.body)
@@ -1025,14 +1025,14 @@ private struct MessageBubbleRow: View {
                     .foregroundStyle(foregroundStyle(for: content))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(message.isFromUser ? platform.outgoingBubble : LoopTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
+                    .background(message.isFromUser ? platform.outgoingBubble : NudgeTheme.incomingBubble, in: RoundedRectangle(cornerRadius: 12))
 
                 if !message.isFromUser { Spacer(minLength: 64) }
             }
 
             Text("\(message.isFromUser ? "You" : message.senderLabel) · \(message.sentAt.relativeLabel)")
                 .font(.caption2)
-                .foregroundStyle(LoopTheme.tertiaryText)
+                .foregroundStyle(NudgeTheme.tertiaryText)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
@@ -1042,17 +1042,17 @@ private struct MessageBubbleRow: View {
         if message.isFromUser {
             return .white
         }
-        return content.isPlaceholder ? LoopTheme.secondaryText : LoopTheme.text
+        return content.isPlaceholder ? NudgeTheme.secondaryText : NudgeTheme.text
     }
 }
 
-private extension LoopMessagePlatform {
+private extension NudgeMessagePlatform {
     var outgoingBubble: Color {
         switch self {
         case .iMessage, .unknown:
-            return LoopTheme.iMessageBubble
+            return NudgeTheme.iMessageBubble
         case .smsOrRCS:
-            return LoopTheme.smsBubble
+            return NudgeTheme.smsBubble
         }
     }
 }
@@ -1105,7 +1105,7 @@ private struct MessageBubbleContent {
 }
 
 struct EmptyStateView: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
     @ObservedObject var model: MinderViewModel
 
     var body: some View {
@@ -1123,10 +1123,10 @@ struct EmptyStateView: View {
             }
             Text("Nothing to complete")
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(LoopTheme.text)
+                .foregroundStyle(NudgeTheme.text)
             Text(model.messages.isEmpty ? "No messages checked yet." : "All caught up.")
                 .font(.caption)
-                .foregroundStyle(LoopTheme.secondaryText)
+                .foregroundStyle(NudgeTheme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280)
             Button {
@@ -1141,8 +1141,8 @@ struct EmptyStateView: View {
         }
         .padding(.vertical, 24)
         .padding(.horizontal, 24)
-        .frame(maxWidth: LoopQueueLayout.cardMaxWidth, minHeight: LoopQueueLayout.cardHeight, maxHeight: LoopQueueLayout.cardHeight)
-        .background(LoopTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: NudgeQueueLayout.cardMaxWidth, minHeight: NudgeQueueLayout.cardHeight, maxHeight: NudgeQueueLayout.cardHeight)
+        .background(NudgeTheme.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.completion.opacity(0.24), lineWidth: 1)
@@ -1151,7 +1151,7 @@ struct EmptyStateView: View {
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 private struct GeminiDiagnosticsView: View {
     @ObservedObject var model: MinderViewModel
 
@@ -1304,7 +1304,7 @@ private struct AppleMessagesDecodeTraceReportView: View {
                 }
             }
 
-            Text("Temporary local trace only. Snippets are not written to Loop storage or files.")
+            Text("Temporary local trace only. Snippets are not written to Nudge storage or files.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1507,7 +1507,7 @@ private struct AppleMessagesTextDiagnosticRow: View {
                 MetricPill(title: "visible non-text rows", value: "\(diagnostics.visibleNonTextRows)", systemImage: "ellipsis.bubble")
             }
 
-            Text("Counts only. Loop does not show or store raw diagnostic message bodies here.")
+            Text("Counts only. Nudge does not show or store raw diagnostic message bodies here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1599,7 +1599,7 @@ private struct GeminiDiagnosticRow: View {
 #endif
 
 struct SuggestionRow: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var suggestion: Suggestion
     var isSelected: Bool
@@ -1684,7 +1684,7 @@ struct SuggestionRow: View {
 }
 
 struct SuggestionDetailView: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     @ObservedObject var model: MinderViewModel
     var suggestion: Suggestion?
@@ -1950,10 +1950,10 @@ private struct ConfidenceBadge: View {
             Text("\(Int(confidence * 100))%")
                 .font(.caption2.weight(.semibold).monospacedDigit())
         }
-        .foregroundStyle(LoopTheme.secondaryText)
+        .foregroundStyle(NudgeTheme.secondaryText)
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(LoopTheme.controlFill, in: Capsule())
+        .background(NudgeTheme.controlFill, in: Capsule())
         .help("Confidence")
     }
 }
@@ -1980,7 +1980,7 @@ private extension SuggestionType {
         }
     }
 
-    func tint(in palette: LoopPalette) -> Color {
+    func tint(in palette: NudgePalette) -> Color {
         switch self {
         case .deadline, .calendarEvent:
             return palette.primary
@@ -2006,7 +2006,7 @@ private extension ManualQueueItemKind {
         }
     }
 
-    func tint(in palette: LoopPalette) -> Color {
+    func tint(in palette: NudgePalette) -> Color {
         switch self {
         case .todo:
             return palette.completion
@@ -2097,7 +2097,7 @@ private extension HealthState {
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 private extension GeminiDiagnosticOutcome {
     var displayName: String {
         switch self {

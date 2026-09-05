@@ -6,6 +6,10 @@ public enum DotenvLoader {
     }
 
     public static func userDotenvURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".nudge.env")
+    }
+
+    public static func legacyLoopUserDotenvURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".loop.env")
     }
 
@@ -17,6 +21,7 @@ public enum DotenvLoader {
         [
             repoDotenvURL(),
             legacyUserDotenvURL(),
+            legacyLoopUserDotenvURL(),
             userDotenvURL()
         ]
     }
@@ -99,13 +104,15 @@ public enum GeminiConfigValidationResult: Equatable {
 
 public struct GeminiConfigStore {
     public var url: URL
+    public var fallbackURLs: [URL]
 
-    public init(url: URL = DotenvLoader.userDotenvURL()) {
+    public init(url: URL = DotenvLoader.userDotenvURL(), fallbackURLs: [URL]? = nil) {
         self.url = url
+        self.fallbackURLs = fallbackURLs ?? Self.defaultFallbackURLs(for: url)
     }
 
     public func load() -> GeminiConfig? {
-        GeminiConfig.fromEnvironment([:], dotenvURLs: [url])
+        GeminiConfig.fromEnvironment([:], dotenvURLs: fallbackURLs + [url])
     }
 
     public func validation() -> GeminiConfigValidationResult {
@@ -165,6 +172,14 @@ public struct GeminiConfigStore {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
+    }
+
+    private static func defaultFallbackURLs(for url: URL) -> [URL] {
+        guard url == DotenvLoader.userDotenvURL() else { return [] }
+        return [
+            DotenvLoader.legacyUserDotenvURL(),
+            DotenvLoader.legacyLoopUserDotenvURL()
+        ]
     }
 }
 

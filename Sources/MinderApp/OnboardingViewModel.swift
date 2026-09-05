@@ -9,7 +9,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var permissionHealth: [PermissionHealth] = []
     @Published private(set) var sources: [ConversationSource] = []
     @Published private(set) var lastImportResults: [SourceKind: ImportResult] = [:]
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     @Published private(set) var appleMessagesTextDiagnostics: AppleMessagesTextDiagnostics?
     @Published private(set) var appleMessagesDecodeTraceReport: AppleMessagesDecodeTraceReport?
 #endif
@@ -121,8 +121,8 @@ final class OnboardingViewModel: ObservableObject {
         health(for: .contacts).state != .available
     }
 
-    var operationalStatus: LoopOperationalStatus {
-        LoopOperationalStatus.make(
+    var operationalStatus: NudgeOperationalStatus {
+        NudgeOperationalStatus.make(
             profile: profile,
             permissionHealth: permissionHealth,
             sources: sources,
@@ -142,11 +142,11 @@ final class OnboardingViewModel: ObservableObject {
     var messagesNextAction: String? {
         switch messagesReadiness {
         case .needsPermission:
-            return "Grant Full Disk Access to Loop, then return here and click Check Again."
+            return "Grant Full Disk Access to Nudge, then return here and click Check Again."
         case .needsSetup:
             return health(for: .appleMessages).detail
         case .ready:
-            return "Access is ready. Import recent Messages to add this source to Loop."
+            return "Access is ready. Import recent Messages to add this source to Nudge."
         case .connected:
             return nil
         case .imported:
@@ -157,7 +157,7 @@ final class OnboardingViewModel: ObservableObject {
     var contactsNextAction: String? {
         switch contactsReadiness {
         case .ready:
-            return "Optional but recommended. Contacts lets Loop replace phone numbers and emails with local contact names."
+            return "Optional but recommended. Contacts lets Nudge replace phone numbers and emails with local contact names."
         case .connected:
             return "Contacts are available. The next Messages import will use local names when possible."
         case .needsPermission:
@@ -290,7 +290,7 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func runAppleMessagesTextDiagnostic() {
         perform("Checking Messages text storage...") {
             let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86_400)
@@ -333,7 +333,7 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func clearGeminiDiagnostics() {
         perform("Clearing Cloud AI diagnostics...") {
             try self.store.clearGeminiDiagnosticRuns()
@@ -346,17 +346,17 @@ final class OnboardingViewModel: ObservableObject {
 #endif
 
     func eraseAllData() {
-        perform("Deleting all local Loop data...") {
+        perform("Deleting all local Nudge data...") {
             try self.store.eraseAllData()
             self.profile = UserProfile(displayName: NSFullUserName())
             self.permissionHealth = []
             self.sources = []
             self.lastImportResults = [:]
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             self.appleMessagesTextDiagnostics = nil
             self.appleMessagesDecodeTraceReport = nil
 #endif
-            self.statusMessage = "Deleted all local Loop data."
+            self.statusMessage = "Deleted all local Nudge data."
             self.onChange()
         }
     }
@@ -365,7 +365,7 @@ final class OnboardingViewModel: ObservableObject {
         perform("Opening System Settings...") {
             let opened = await self.coordinator.openSystemSettings(for: kind)
             if opened, kind == .fullDiskAccess || kind == .appleMessages {
-                self.statusMessage = "Opened Full Disk Access. Add or toggle Loop, then return here and click Check Again."
+                self.statusMessage = "Opened Full Disk Access. Add or toggle Nudge, then return here and click Check Again."
             } else {
                 self.statusMessage = opened ? "Opened System Settings for \(kind.displayName)." : "Could not open System Settings for \(kind.displayName)."
             }

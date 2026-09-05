@@ -5,7 +5,7 @@ import MinderCore
 
 protocol AppleMessagesImporting {
     func importRecent(into store: MinderStore, since cutoff: Date) async throws -> ImportResult
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func textDiagnostics(since cutoff: Date) throws -> AppleMessagesTextDiagnostics
     func decodeTrace(threadTitleMatches: [String], aliasesByTitle: [String: [String]], since cutoff: Date, limitPerThread: Int) throws -> AppleMessagesDecodeTraceReport
 #endif
@@ -13,7 +13,7 @@ protocol AppleMessagesImporting {
 
 extension AppleMessagesConversationImporter: AppleMessagesImporting {}
 
-enum LoopMainTab: String, CaseIterable, Identifiable {
+enum NudgeMainTab: String, CaseIterable, Identifiable {
     case queue
     case done
     case settings
@@ -43,17 +43,17 @@ enum LoopMainTab: String, CaseIterable, Identifiable {
     }
 }
 
-struct LoopSuggestionCard: Identifiable {
+struct NudgeSuggestionCard: Identifiable {
     var suggestion: Suggestion
     var recentMessages: [Message] = []
-    var messagePlatform: LoopMessagePlatform = .unknown
+    var messagePlatform: NudgeMessagePlatform = .unknown
 
     var id: String {
         suggestion.id
     }
 }
 
-enum LoopMessagePlatform {
+enum NudgeMessagePlatform {
     case iMessage
     case smsOrRCS
     case unknown
@@ -70,7 +70,7 @@ enum LoopMessagePlatform {
     }
 }
 
-struct LoopAlertLegendItem: Identifiable, Equatable {
+struct NudgeAlertLegendItem: Identifiable, Equatable {
     var type: SuggestionType
     var count: Int
 
@@ -79,8 +79,8 @@ struct LoopAlertLegendItem: Identifiable, Equatable {
     }
 }
 
-enum LoopQueueItem: Identifiable {
-    case suggestion(LoopSuggestionCard)
+enum NudgeQueueItem: Identifiable {
+    case suggestion(NudgeSuggestionCard)
     case manual(ManualQueueItem)
 
     var id: String {
@@ -102,7 +102,7 @@ enum LoopQueueItem: Identifiable {
     }
 }
 
-enum LoopCompletedQueueItem: Identifiable {
+enum NudgeCompletedQueueItem: Identifiable {
     case suggestion(Suggestion)
     case manual(ManualQueueItem)
 
@@ -134,7 +134,7 @@ enum LoopCompletedQueueItem: Identifiable {
     }
 }
 
-enum LoopSuggestionSyncReason: Equatable {
+enum NudgeSuggestionSyncReason: Equatable {
     case manual
     case periodic
 
@@ -148,7 +148,7 @@ enum LoopSuggestionSyncReason: Equatable {
     }
 }
 
-private struct LoopAlertIdentity: Hashable {
+private struct NudgeAlertIdentity: Hashable {
     var sourceId: String
     var threadId: String
     var type: SuggestionType
@@ -165,9 +165,9 @@ private struct LoopAlertIdentity: Hashable {
 @MainActor
 final class MinderViewModel: ObservableObject {
     @Published private(set) var suggestions: [Suggestion] = []
-    @Published private(set) var suggestionCards: [LoopSuggestionCard] = []
-    @Published private(set) var queueItems: [LoopQueueItem] = []
-    @Published private(set) var alertLegendItems: [LoopAlertLegendItem] = []
+    @Published private(set) var suggestionCards: [NudgeSuggestionCard] = []
+    @Published private(set) var queueItems: [NudgeQueueItem] = []
+    @Published private(set) var alertLegendItems: [NudgeAlertLegendItem] = []
     @Published private(set) var activeAlertCount = 0
     @Published private(set) var queuePageIndex = 0
     @Published private(set) var manualItems: [ManualQueueItem] = []
@@ -175,7 +175,7 @@ final class MinderViewModel: ObservableObject {
     @Published private(set) var threads: [ConversationThread] = []
     @Published private(set) var messages: [Message] = []
     @Published private(set) var auditEvents: [AuditEvent] = []
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     @Published private(set) var geminiDiagnostics: [GeminiDiagnosticRun] = []
     @Published private(set) var appleMessagesTextDiagnostics: AppleMessagesTextDiagnostics?
     @Published private(set) var appleMessagesDecodeTraceReport: AppleMessagesDecodeTraceReport?
@@ -185,10 +185,10 @@ final class MinderViewModel: ObservableObject {
     @Published private(set) var lastSyncAt: Date?
     @Published private(set) var lastRefreshFailed = false
     @Published var selectedSuggestion: Suggestion?
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     @Published var isShowingGeminiDiagnostics = false
 #endif
-    @Published var selectedTab: LoopMainTab = .queue
+    @Published var selectedTab: NudgeMainTab = .queue
     @Published var statusMessage: String = "Ready."
     @Published var isWorking = false
     @Published private(set) var isGeneratingSuggestions = false
@@ -199,7 +199,7 @@ final class MinderViewModel: ObservableObject {
     private let permissionCoordinator: OnboardingPermissionCoordinator
     private let importer = ConversationImporter()
     private let messagesImporter: any AppleMessagesImporting
-    private let alertNotifier: any LoopAlertNotifying
+    private let alertNotifier: any NudgeAlertNotifying
     private static let prototypeSourceKinds: Set<SourceKind> = [.appleMessages]
     static let queuePageSize = 1
     static let suggestionPreviewMessageLimit = 15
@@ -208,7 +208,7 @@ final class MinderViewModel: ObservableObject {
         store: MinderStore,
         permissionService: PermissionServicing,
         messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter(),
-        alertNotifier: any LoopAlertNotifying = LoopNoopAlertNotifier()
+        alertNotifier: any NudgeAlertNotifying = NudgeNoopAlertNotifier()
     ) {
         self.store = store
         self.permissionCoordinator = OnboardingPermissionCoordinator(store: store, service: permissionService)
@@ -235,8 +235,8 @@ final class MinderViewModel: ObservableObject {
         GeminiConfig.fromEnvironment() != nil && profile?.cloudAIEnabled == true ? "Gemini" : "Local AI"
     }
 
-    var operationalStatus: LoopOperationalStatus {
-        LoopOperationalStatus.make(
+    var operationalStatus: NudgeOperationalStatus {
+        NudgeOperationalStatus.make(
             profile: profile,
             permissionHealth: permissionHealth,
             sources: sources,
@@ -299,12 +299,12 @@ final class MinderViewModel: ObservableObject {
         queuePageIndex < maxQueuePageIndex(forItemCount: activeQueueCount)
     }
 
-    var recentCompletedQueueItems: [LoopCompletedQueueItem] {
+    var recentCompletedQueueItems: [NudgeCompletedQueueItem] {
         let cutoff = Date().addingTimeInterval(-48 * 60 * 60)
-        let completedSuggestions = recentCompletedSuggestions.map(LoopCompletedQueueItem.suggestion)
+        let completedSuggestions = recentCompletedSuggestions.map(NudgeCompletedQueueItem.suggestion)
         let completedManualItems = manualItems
             .filter { $0.state == .completed && ($0.completedAt ?? $0.updatedAt) >= cutoff }
-            .map(LoopCompletedQueueItem.manual)
+            .map(NudgeCompletedQueueItem.manual)
         return (completedSuggestions + completedManualItems)
             .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(5)
@@ -335,7 +335,7 @@ final class MinderViewModel: ObservableObject {
             suggestions = try store.fetchSuggestions(includeCompleted: true)
             manualItems = try store.fetchManualQueueItems(includeCompleted: true)
             auditEvents = try store.fetchAuditEvents(limit: 12)
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             geminiDiagnostics = try store.fetchGeminiDiagnosticRuns(limit: 20)
 #endif
             permissionHealth = try store.fetchPermissionHealth()
@@ -385,11 +385,11 @@ final class MinderViewModel: ObservableObject {
         showQueueWindow?()
     }
 
-    func quitLoop() {
+    func quitNudge() {
         NSApp.terminate(nil)
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func openGeminiDiagnostics() {
         refreshGeminiDiagnostics()
         isShowingGeminiDiagnostics = true
@@ -491,10 +491,10 @@ final class MinderViewModel: ObservableObject {
         syncAndGenerateSuggestions(reason: .manual)
     }
 
-    func syncAndGenerateSuggestions(reason: LoopSuggestionSyncReason) {
+    func syncAndGenerateSuggestions(reason: NudgeSuggestionSyncReason) {
         guard !isGeneratingSuggestions else {
             if reason == .manual {
-                statusMessage = "Loop is already checking Messages."
+                statusMessage = "Nudge is already checking Messages."
             }
             return
         }
@@ -607,7 +607,7 @@ final class MinderViewModel: ObservableObject {
         }
     }
 
-    func undoCompleted(_ item: LoopCompletedQueueItem) {
+    func undoCompleted(_ item: NudgeCompletedQueueItem) {
         switch item {
         case .suggestion(let suggestion):
             undoCompleted(suggestion)
@@ -660,7 +660,7 @@ final class MinderViewModel: ObservableObject {
     func eraseAllData() {
         perform("Deleting local dev data...") {
             try self.store.eraseAllData()
-            self.statusMessage = "Deleted local LoopDev data."
+            self.statusMessage = "Deleted local NudgeDev data."
             self.refresh()
         }
     }
@@ -699,20 +699,20 @@ final class MinderViewModel: ObservableObject {
         queueItems = pageItems(from: allQueueItems)
     }
 
-    private func makeSuggestionCards(from suggestions: [Suggestion]) throws -> [LoopSuggestionCard] {
+    private func makeSuggestionCards(from suggestions: [Suggestion]) throws -> [NudgeSuggestionCard] {
         try suggestions.map { suggestion in
             let thread = threads.first { $0.id == suggestion.threadId }
-            return LoopSuggestionCard(
+            return NudgeSuggestionCard(
                 suggestion: suggestion,
                 recentMessages: try store.fetchRecentMessages(threadId: suggestion.threadId, limit: Self.suggestionPreviewMessageLimit),
-                messagePlatform: LoopMessagePlatform(threadExternalId: thread?.externalId)
+                messagePlatform: NudgeMessagePlatform(threadExternalId: thread?.externalId)
             )
         }
     }
 
-    private func makeQueueItems(from suggestionCards: [LoopSuggestionCard]) -> [LoopQueueItem] {
-        let suggestionItems = suggestionCards.map(LoopQueueItem.suggestion)
-        let manualItems = activeManualItems.map(LoopQueueItem.manual)
+    private func makeQueueItems(from suggestionCards: [NudgeSuggestionCard]) -> [NudgeQueueItem] {
+        let suggestionItems = suggestionCards.map(NudgeQueueItem.suggestion)
+        let manualItems = activeManualItems.map(NudgeQueueItem.manual)
         return (suggestionItems + manualItems).sorted(by: isHigherPriorityQueueItem)
     }
 
@@ -725,7 +725,7 @@ final class MinderViewModel: ObservableObject {
         }
     }
 
-    private func pageItems(from items: [LoopQueueItem]) -> [LoopQueueItem] {
+    private func pageItems(from items: [NudgeQueueItem]) -> [NudgeQueueItem] {
         guard !items.isEmpty else { return [] }
         let start = queuePageIndex * Self.queuePageSize
         guard start < items.count else { return [] }
@@ -737,16 +737,16 @@ final class MinderViewModel: ObservableObject {
         count > 0 ? (count - 1) / Self.queuePageSize : 0
     }
 
-    private func makeAlertLegendItems(from suggestions: [Suggestion]) -> [LoopAlertLegendItem] {
+    private func makeAlertLegendItems(from suggestions: [Suggestion]) -> [NudgeAlertLegendItem] {
         let countsByType = Dictionary(grouping: suggestions, by: \.type)
             .mapValues(\.count)
         return SuggestionType.allCases.map { type in
-            LoopAlertLegendItem(type: type, count: countsByType[type, default: 0])
+            NudgeAlertLegendItem(type: type, count: countsByType[type, default: 0])
         }
     }
 
-    private func activeAlertIdentitiesFromStore() throws -> Set<LoopAlertIdentity> {
-        Set(try activeGeneratedAlertsFromStore().map(LoopAlertIdentity.init))
+    private func activeAlertIdentitiesFromStore() throws -> Set<NudgeAlertIdentity> {
+        Set(try activeGeneratedAlertsFromStore().map(NudgeAlertIdentity.init))
     }
 
     private func activeGeneratedAlertsFromStore() throws -> [Suggestion] {
@@ -763,8 +763,8 @@ final class MinderViewModel: ObservableObject {
     }
 
     private func notifyForNewPeriodicAlerts(
-        reason: LoopSuggestionSyncReason,
-        previousIdentities: Set<LoopAlertIdentity>,
+        reason: NudgeSuggestionSyncReason,
+        previousIdentities: Set<NudgeAlertIdentity>,
         activeAlertsAfterSync: [Suggestion]
     ) async {
         guard reason == .periodic else { return }
@@ -772,7 +772,7 @@ final class MinderViewModel: ObservableObject {
         guard !isQueueInterfaceVisible() else { return }
 
         let newAlerts = activeAlertsAfterSync.filter { suggestion in
-            !previousIdentities.contains(LoopAlertIdentity(suggestion))
+            !previousIdentities.contains(NudgeAlertIdentity(suggestion))
         }
         guard !newAlerts.isEmpty else { return }
 
@@ -785,7 +785,7 @@ final class MinderViewModel: ObservableObject {
 
         guard profile?.cloudAIEnabled == true else {
             let report = try await localFallbackReport()
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config?.model ?? "Gemini",
                 start: Date(),
@@ -805,7 +805,7 @@ final class MinderViewModel: ObservableObject {
 
         guard let config else {
             let report = try await localFallbackReport()
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: "Gemini",
                 start: Date(),
@@ -833,7 +833,7 @@ final class MinderViewModel: ObservableObject {
                 rankedDraftCount: 0,
                 savedSuggestions: saved
             )
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -863,7 +863,7 @@ final class MinderViewModel: ObservableObject {
                 rankedDraftCount: rankedDrafts.count,
                 savedSuggestions: saved
             )
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -882,7 +882,7 @@ final class MinderViewModel: ObservableObject {
         } catch {
             let geminiDuration = max(0, Int(Date().timeIntervalSince(start) * 1000))
             let report = try await localFallbackReport()
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             saveGeminiDiagnosticRun(
                 model: config.model,
                 start: start,
@@ -926,7 +926,7 @@ final class MinderViewModel: ObservableObject {
         return StoredRankingInputs(context: context, policy: policy, candidates: candidates)
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private func latestGeminiDiagnosticRun() throws -> GeminiDiagnosticRun {
         if let latest = geminiDiagnostics.first {
             return latest
@@ -1231,7 +1231,7 @@ final class MinderViewModel: ObservableObject {
         return lhs.evidence.sourceTimestamp > rhs.evidence.sourceTimestamp
     }
 
-    private func isHigherPriorityQueueItem(_ lhs: LoopQueueItem, than rhs: LoopQueueItem) -> Bool {
+    private func isHigherPriorityQueueItem(_ lhs: NudgeQueueItem, than rhs: NudgeQueueItem) -> Bool {
         if lhs.updatedAt != rhs.updatedAt {
             return lhs.updatedAt > rhs.updatedAt
         }
@@ -1270,14 +1270,14 @@ private struct StoredRankingInputs {
 }
 
 private enum GeminiDebugError: Error, LocalizedError {
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     case noDiagnostics
 #endif
     case missingGeminiConfig
 
     var errorDescription: String? {
         switch self {
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
         case .noDiagnostics:
             return "No Gemini diagnostics are available yet. Click Refresh with Gemini enabled first."
 #endif

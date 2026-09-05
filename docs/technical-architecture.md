@@ -2,7 +2,7 @@
 
 ## Overview
 
-Loop is a direct-distribution macOS app with a menu bar UI, onboarding, local connectors, a local database, a local-first AI pipeline, and action executors for Calendar, Reminders, notifications, and source-app opening.
+Nudge is a direct-distribution macOS app with a menu bar UI, onboarding, local connectors, a local database, a local-first AI pipeline, and action executors for Calendar, Reminders, notifications, and source-app opening.
 
 The architecture prioritizes local data control, observable permission health, and graceful degradation when macOS or source access changes.
 

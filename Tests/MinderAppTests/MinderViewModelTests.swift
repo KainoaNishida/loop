@@ -1,5 +1,5 @@
 import XCTest
-@testable import Loop
+@testable import Nudge
 @testable import MinderCore
 
 @MainActor
@@ -325,7 +325,7 @@ final class MinderViewModelTests: XCTestCase {
         XCTAssertEqual(notifier.notifiedAlertBatches.first?.count, 2)
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func testRunAppleMessagesDecodeTraceStoresReportAndStatus() throws {
         let store = try makeStore()
         let trace = AppleMessagesDecodeTraceReport(
@@ -540,7 +540,7 @@ final class MinderViewModelTests: XCTestCase {
             permissionService: FakePermissionService(notificationHealth: PermissionHealth(
                 kind: .notifications,
                 state: .degraded,
-                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Loop, then click Check Again."
+                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Nudge, then click Check Again."
             ))
         )
 
@@ -663,7 +663,7 @@ final class MinderViewModelTests: XCTestCase {
         let source = try sourceFileContents("Sources/MinderApp/OnboardingView.swift")
 
         XCTAssertFalse(source.contains("scripts/build-dev-app.sh"))
-        XCTAssertFalse(source.contains(".build/LoopDev"))
+        XCTAssertFalse(source.contains(".build/NudgeDev"))
         XCTAssertFalse(source.contains("Current Running App"))
         XCTAssertFalse(source.contains("Relaunch Current Build"))
         XCTAssertFalse(source.contains("Bundle ID"))
@@ -674,8 +674,8 @@ final class MinderViewModelTests: XCTestCase {
     func testAboutGuideExplainsUserJourney() throws {
         let source = try sourceFileContents("Sources/MinderApp/OnboardingView.swift")
 
-        XCTAssertTrue(source.contains("How Loop Works"))
-        XCTAssertTrue(source.contains("Loop reviews recent Apple Messages locally"))
+        XCTAssertTrue(source.contains("How Nudge Works"))
+        XCTAssertTrue(source.contains("Nudge reviews recent Apple Messages locally"))
         XCTAssertTrue(source.contains("Use Refresh"))
         XCTAssertTrue(source.contains("Mark alerts done"))
         XCTAssertTrue(source.contains("Notifications appear only for genuinely new alerts"))
@@ -707,7 +707,7 @@ final class MinderViewModelTests: XCTestCase {
 private func makeModel(
     store: MinderStore,
     messagesImporter: any AppleMessagesImporting = AppleMessagesConversationImporter(),
-    alertNotifier: any LoopAlertNotifying = LoopNoopAlertNotifier()
+    alertNotifier: any NudgeAlertNotifying = NudgeNoopAlertNotifier()
 ) -> MinderViewModel {
     MinderViewModel(
         store: store,
@@ -777,8 +777,8 @@ private func operationalStatus(
     lastRefreshFailed: Bool = false,
     hasCloudAIConfig: Bool = true,
     now: Date = Date()
-) -> LoopOperationalStatus {
-    LoopOperationalStatus.make(
+) -> NudgeOperationalStatus {
+    NudgeOperationalStatus.make(
         profile: profile,
         permissionHealth: permissionHealth,
         sources: sources,
@@ -897,7 +897,7 @@ private struct FakePermissionService: PermissionServicing {
 }
 
 @MainActor
-private final class FakeAlertNotifier: LoopAlertNotifying {
+private final class FakeAlertNotifier: NudgeAlertNotifying {
     private(set) var notifiedAlertBatches: [[Suggestion]] = []
 
     func notifyNewAlerts(_ alerts: [Suggestion]) async {
@@ -907,16 +907,16 @@ private final class FakeAlertNotifier: LoopAlertNotifying {
 
 private final class FakeAppleMessagesImporter: AppleMessagesImporting {
     private let result: ImportResult
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private let decodeTraceReport: AppleMessagesDecodeTraceReport
 #endif
     private(set) var importCallCount = 0
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private(set) var decodeTraceCallCount = 0
     private(set) var decodeTraceAliasesByTitle: [String: [String]] = [:]
 #endif
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     init(
         result: ImportResult,
         decodeTraceReport: AppleMessagesDecodeTraceReport = AppleMessagesDecodeTraceReport(
@@ -941,7 +941,7 @@ private final class FakeAppleMessagesImporter: AppleMessagesImporting {
         return result
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     func textDiagnostics(since cutoff: Date) throws -> AppleMessagesTextDiagnostics {
         AppleMessagesTextDiagnostics(
             checkedSince: cutoff,

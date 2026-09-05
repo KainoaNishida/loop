@@ -23,14 +23,14 @@ public enum AppleMessagesImportError: Error, LocalizedError, Equatable {
         case .databaseMissing(let url):
             return "The Apple Messages database was not found at \(url.path)."
         case .databaseOpenFailed(let message):
-            return "Loop could not open the Apple Messages database read-only: \(message)"
+            return "Nudge could not open the Apple Messages database read-only: \(message)"
         case .incompatibleSchema(let missing):
             return "The Apple Messages database schema is missing: \(missing.joined(separator: ", "))."
         }
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 public struct AppleMessagesTextDiagnostics: Equatable {
     public var checkedSince: Date
     public var outgoingWithPlainText: Int
@@ -280,7 +280,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         try performImport(into: store, since: cutoff)
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     public func textDiagnostics(since cutoff: Date) throws -> AppleMessagesTextDiagnostics {
         let validation = try AppleMessagesSchemaValidator.validate(databaseURL: databaseURL)
         guard validation.isCompatible else {
@@ -311,7 +311,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
     }
 #endif
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     public func decodeTrace(
         threadTitleMatches: [String] = ["Mom", "Hunter", "ksm"],
         aliasesByTitle: [String: [String]] = [:],
@@ -513,7 +513,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         return nil
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private func decodeTraceRow(from row: [String: String?]) -> AppleMessagesDecodeTraceRow? {
         guard
             let rawDate = row["date_value"] ?? nil,
@@ -718,7 +718,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
         """
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private func decodeTraceSQL(schema: AppleMessagesImportSchema) -> String {
         """
         SELECT *
@@ -866,7 +866,7 @@ public final class AppleMessagesConversationImporter: ConversationImporting {
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 private struct AppleMessagesDecodeDiagnostics {
     var attributedBody = 0
     var payloadData = 0
@@ -930,7 +930,7 @@ private struct AppleMessagesTraceChatCandidate {
 private struct AppleMessagesImportSchema {
     var messageColumns: Set<String>
     var chatMessageJoinColumns: Set<String>
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     var chatHandleJoinColumns: Set<String>
 #endif
     var attachmentColumns: Set<String>
@@ -938,7 +938,7 @@ private struct AppleMessagesImportSchema {
     init(database: SQLiteReadOnlyDatabase) throws {
         self.messageColumns = try database.tableColumns("message")
         self.chatMessageJoinColumns = try database.tableColumns("message_attachment_join")
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
         self.chatHandleJoinColumns = try database.tableColumns("chat_handle_join")
 #endif
         self.attachmentColumns = try database.tableColumns("attachment")
@@ -966,7 +966,7 @@ private struct AppleMessagesImportSchema {
         canJoinAttachments ? "attachment_info.attachment_summary AS attachment_summary" : "NULL AS attachment_summary"
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     var chatHandleSelect: String {
         canJoinChatHandles ? "group_concat(DISTINCT chat_handle.id) AS chat_handles" : "NULL AS chat_handles"
     }
@@ -1044,7 +1044,7 @@ private struct AppleMessagesImportSchema {
             && !attachmentColumns.isEmpty
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     private var canJoinChatHandles: Bool {
         chatHandleJoinColumns.contains("chat_id")
             && chatHandleJoinColumns.contains("handle_id")

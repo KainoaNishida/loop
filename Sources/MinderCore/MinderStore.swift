@@ -26,10 +26,10 @@ public final class MinderStore {
     public static func defaultDatabaseURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let channel = LoopReleaseChannel.current()
+        let channel = NudgeReleaseChannel.current()
         return appSupport
             .appendingPathComponent(channel.appSupportDirectoryName, isDirectory: true)
-            .appendingPathComponent("loop.sqlite")
+            .appendingPathComponent("nudge.sqlite")
     }
 
     private static func legacyDefaultDatabaseURL() -> URL {
@@ -40,21 +40,32 @@ public final class MinderStore {
             .appendingPathComponent("minder.sqlite")
     }
 
+    private static func legacyLoopDefaultDatabaseURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        let channel = NudgeReleaseChannel.current()
+        return appSupport
+            .appendingPathComponent(channel.legacyLoopAppSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent("loop.sqlite")
+    }
+
     private static func migrateLegacyDefaultDatabaseIfNeeded(to databaseURL: URL) throws {
         let fileManager = FileManager.default
-        let legacyURL = legacyDefaultDatabaseURL()
+        let legacyURL = legacyLoopDefaultDatabaseURL()
+        let olderLegacyURL = legacyDefaultDatabaseURL()
+        let sourceURL = fileManager.fileExists(atPath: legacyURL.path) ? legacyURL : olderLegacyURL
         guard
             !fileManager.fileExists(atPath: databaseURL.path),
-            fileManager.fileExists(atPath: legacyURL.path)
+            fileManager.fileExists(atPath: sourceURL.path)
         else {
             return
         }
 
         try fileManager.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fileManager.copyItem(at: legacyURL, to: databaseURL)
+        try fileManager.copyItem(at: sourceURL, to: databaseURL)
 
         for suffix in ["-shm", "-wal"] {
-            let legacySidecar = URL(fileURLWithPath: legacyURL.path + suffix)
+            let legacySidecar = URL(fileURLWithPath: sourceURL.path + suffix)
             let newSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
             if fileManager.fileExists(atPath: legacySidecar.path), !fileManager.fileExists(atPath: newSidecar.path) {
                 try fileManager.copyItem(at: legacySidecar, to: newSidecar)
@@ -64,7 +75,7 @@ public final class MinderStore {
 
     public func eraseAllData() throws {
         try database.transaction {
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
             try database.execute("DELETE FROM gemini_diagnostic_runs")
 #endif
             try database.execute("DELETE FROM audit_events")
@@ -574,7 +585,7 @@ public final class MinderStore {
             .map(auditEvent(from:))
     }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
     public func saveGeminiDiagnosticRun(_ run: GeminiDiagnosticRun) throws {
         try database.execute(
             """
@@ -713,7 +724,7 @@ public final class MinderStore {
             """
         )
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
         try database.execute(
             """
             CREATE TABLE IF NOT EXISTS gemini_diagnostic_runs (
@@ -1220,7 +1231,7 @@ private func auditEvent(from row: [String: String?]) throws -> AuditEvent {
     )
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 private func geminiDiagnosticRun(from row: [String: String?]) throws -> GeminiDiagnosticRun {
     GeminiDiagnosticRun(
         id: try required(row, "id"),

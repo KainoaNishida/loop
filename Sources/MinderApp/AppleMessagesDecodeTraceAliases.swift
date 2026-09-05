@@ -1,4 +1,4 @@
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 import Foundation
 import MinderCore
 

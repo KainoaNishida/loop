@@ -55,7 +55,7 @@ final class MacPermissionService: PermissionServicing {
             return PermissionHealth(
                 kind: .notifications,
                 state: .degraded,
-                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Loop, then click Check Again. \(error.localizedDescription)"
+                detail: "macOS could not show the notification prompt. Open Notification Settings, enable Nudge, then click Check Again. \(error.localizedDescription)"
             )
         }
     }
@@ -65,7 +65,7 @@ final class MacPermissionService: PermissionServicing {
             return PermissionHealth(
                 kind: .contacts,
                 state: .unsupported,
-                detail: "Contacts permission prompts require a packaged .app bundle. Build Loop.app to enable contact names."
+                detail: "Contacts permission prompts require a packaged .app bundle. Build Nudge.app to enable contact names."
             )
         }
 
@@ -157,19 +157,19 @@ final class MacPermissionService: PermissionServicing {
                 let handle = try FileHandle(forReadingFrom: messagesDatabaseURL)
                 try? handle.close()
                 return (
-                    PermissionHealth(kind: .fullDiskAccess, state: .available, detail: "Loop can read the local Messages database."),
+                    PermissionHealth(kind: .fullDiskAccess, state: .available, detail: "Nudge can read the local Messages database."),
                     AppleMessagesConversationImporter.health(databaseURL: messagesDatabaseURL)
                 )
             } catch {
                 return (
-                    PermissionHealth(kind: .fullDiskAccess, state: .missing, detail: "Loop cannot read Messages yet. Grant Full Disk Access in System Settings."),
+                    PermissionHealth(kind: .fullDiskAccess, state: .missing, detail: "Nudge cannot read Messages yet. Grant Full Disk Access in System Settings."),
                     PermissionHealth(kind: .appleMessages, state: .missing, detail: "Apple Messages import is paused until Full Disk Access is available.")
                 )
             }
         }
 
         return (
-            PermissionHealth(kind: .fullDiskAccess, state: .missing, detail: "Full Disk Access has not been validated for Loop yet."),
+            PermissionHealth(kind: .fullDiskAccess, state: .missing, detail: "Full Disk Access has not been validated for Nudge yet."),
             PermissionHealth(kind: .appleMessages, state: .unsupported, detail: "The local Messages database was not found on this Mac.")
         )
     }
@@ -201,7 +201,7 @@ final class MacPermissionService: PermissionServicing {
         PermissionHealth(
             kind: .notifications,
             state: .unsupported,
-            detail: "Notifications are unavailable in this launch mode. Open the packaged Loop app, then check again."
+            detail: "Notifications are unavailable in this launch mode. Open the packaged Nudge app, then check again."
         )
     }
 

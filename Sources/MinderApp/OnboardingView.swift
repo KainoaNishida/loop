@@ -15,7 +15,7 @@ private enum SettingsSurface {
 struct OnboardingView: View {
     @ObservedObject var model: OnboardingViewModel
 
-    private var palette: LoopPalette {
+    private var palette: NudgePalette {
         model.profile.appColorScheme.palette
     }
 
@@ -35,7 +35,7 @@ struct OnboardingView: View {
             }
         }
         .frame(minWidth: 860, minHeight: 640)
-        .environment(\.loopPalette, palette)
+        .environment(\.nudgePalette, palette)
         .tint(palette.primary)
         .background(SettingsSurface.pageFill)
         .onAppear {
@@ -49,7 +49,7 @@ struct OnboardingView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSidebarHeader(
-                title: model.profile.hasCompletedOnboarding ? "Loop Settings" : "Loop Setup",
+                title: model.profile.hasCompletedOnboarding ? "Nudge Settings" : "Nudge Setup",
                 subtitle: "Permissions stay visible. Nothing connects silently."
             )
 
@@ -149,10 +149,10 @@ struct OnboardingView: View {
     }
 }
 
-struct LoopSettingsPanelView: View {
+struct NudgeSettingsPanelView: View {
     @ObservedObject var model: OnboardingViewModel
 
-    private var palette: LoopPalette {
+    private var palette: NudgePalette {
         model.profile.appColorScheme.palette
     }
 
@@ -170,7 +170,7 @@ struct LoopSettingsPanelView: View {
                 }
             }
         }
-        .environment(\.loopPalette, palette)
+        .environment(\.nudgePalette, palette)
         .tint(palette.primary)
         .background(SettingsSurface.pageFill)
         .onAppear {
@@ -260,14 +260,14 @@ struct LoopSettingsPanelView: View {
 }
 
 private struct SettingsSidebarHeader: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var title: String
     var subtitle: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            SettingsLoopMark()
+            SettingsNudgeMark()
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline.weight(.semibold))
@@ -290,8 +290,8 @@ private struct SettingsSidebarHeader: View {
     }
 }
 
-private struct SettingsLoopMark: View {
-    @Environment(\.loopPalette) private var palette
+private struct SettingsNudgeMark: View {
+    @Environment(\.nudgePalette) private var palette
 
     var body: some View {
         ZStack {
@@ -306,7 +306,7 @@ private struct SettingsLoopMark: View {
 }
 
 private struct SettingsNavRow: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var step: OnboardingStep
     var isSelected: Bool
@@ -344,7 +344,7 @@ private struct SettingsNavRow: View {
 }
 
 private struct SettingsSidebarBackground: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -393,8 +393,8 @@ private struct WelcomeStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
-                title: "Set up Loop",
-                subtitle: "Loop reviews Apple Messages locally and gives you a short list of conversations you may want to complete."
+                title: "Set up Nudge",
+                subtitle: "Nudge reviews Apple Messages locally and gives you a short list of conversations you may want to complete."
             )
 
             VStack(alignment: .leading, spacing: 12) {
@@ -409,7 +409,7 @@ private struct WelcomeStep: View {
 private struct StatusStep: View {
     @ObservedObject var model: OnboardingViewModel
 
-    private var status: LoopOperationalStatus {
+    private var status: NudgeOperationalStatus {
         model.operationalStatus
     }
 
@@ -417,7 +417,7 @@ private struct StatusStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Status",
-                subtitle: "See whether Loop is working and the one thing to fix next."
+                subtitle: "See whether Nudge is working and the one thing to fix next."
             )
 
             OperationalStatusDetailCard(status: status) {
@@ -451,17 +451,17 @@ private struct StatusStep: View {
         switch status.state {
         case .ready:
             return [
-                "Loop is working. Messages access is available and recent Messages have imported.",
+                "Nudge is working. Messages access is available and recent Messages have imported.",
                 "Notifications are ready, or your alert timing is set to Quiet."
             ]
         case .limited:
             return [
-                "Loop can still monitor Messages, but one supporting feature needs attention.",
+                "Nudge can still monitor Messages, but one supporting feature needs attention.",
                 "Use the action above to jump to the setting most likely to explain the yellow status."
             ]
         case .needsSetup:
             return [
-                "Loop cannot fully monitor Messages yet.",
+                "Nudge cannot fully monitor Messages yet.",
                 "Use the action above, then click Check Again after changing permissions or importing Messages."
             ]
         }
@@ -469,7 +469,7 @@ private struct StatusStep: View {
 }
 
 private struct OperationalStatusDetailCard: View {
-    var status: LoopOperationalStatus
+    var status: NudgeOperationalStatus
     var action: () -> Void
 
     private var heading: String {
@@ -484,7 +484,7 @@ private struct OperationalStatusDetailCard: View {
     private var actionTitle: String {
         switch status.state {
         case .ready:
-            return "Review How Loop Works"
+            return "Review How Nudge Works"
         case .limited, .needsSetup:
             return "Open \(status.targetSettingsStep.title)"
         }
@@ -529,7 +529,7 @@ private struct ProfileStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Preferences",
-                subtitle: "Small personal defaults Loop uses when presenting your queue."
+                subtitle: "Small personal defaults Nudge uses when presenting your queue."
             )
 
             VStack(alignment: .leading, spacing: 14) {
@@ -556,7 +556,7 @@ private struct NotificationsStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Notifications",
-                subtitle: "Choose whether Loop should nudge you when a background refresh finds genuinely new alerts."
+                subtitle: "Choose whether Nudge should nudge you when a background refresh finds genuinely new alerts."
             )
 
             PermissionCard(
@@ -586,8 +586,8 @@ private struct NotificationsStep: View {
                     .frame(maxWidth: 360, alignment: .leading)
 
                 SetupPathBox(lines: [
-                    "Quiet means Loop still refreshes Messages, but it will not send system notifications.",
-                    "If macOS notifications are off, Loop can still build the queue. You just will not receive background digests."
+                    "Quiet means Nudge still refreshes Messages, but it will not send system notifications.",
+                    "If macOS notifications are off, Nudge can still build the queue. You just will not receive background digests."
                 ])
             }
         }
@@ -652,15 +652,15 @@ private struct NotificationsStep: View {
     private var notificationHelperText: String {
         switch model.health(for: .notifications).state {
         case .available:
-            return "Loop can send a digest when new alerts appear."
+            return "Nudge can send a digest when new alerts appear."
         case .missing:
             return "Click Enable Notifications to ask macOS for permission. Quiet mode keeps notifications off without limiting message monitoring."
         case .revoked:
-            return "Notifications are off in macOS. Enable Loop in Notification Settings, then click Check Again."
+            return "Notifications are off in macOS. Enable Nudge in Notification Settings, then click Check Again."
         case .degraded:
-            return "The notification prompt did not complete. Open Notification Settings, enable Loop if it appears, then click Check Again."
+            return "The notification prompt did not complete. Open Notification Settings, enable Nudge if it appears, then click Check Again."
         case .unsupported:
-            return "Notifications are unavailable in this launch mode. Use the packaged Loop app to enable them."
+            return "Notifications are unavailable in this launch mode. Use the packaged Nudge app to enable them."
         }
     }
 }
@@ -668,7 +668,7 @@ private struct NotificationsStep: View {
 private struct AppearanceStep: View {
     @ObservedObject var model: OnboardingViewModel
 
-    private var palette: LoopPalette {
+    private var palette: NudgePalette {
         model.profile.appColorScheme.palette
     }
 
@@ -680,7 +680,7 @@ private struct AppearanceStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Theme",
-                subtitle: "Choose one accent color for Loop."
+                subtitle: "Choose one accent color for Nudge."
             )
 
             VStack(alignment: .leading, spacing: 14) {
@@ -767,18 +767,18 @@ private struct MessagesStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Apple Messages",
-                subtitle: "Connect Messages once, then Loop can keep your alert queue fresh."
+                subtitle: "Connect Messages once, then Nudge can keep your alert queue fresh."
             )
 
             PermissionCard(
                 health: model.health(for: .fullDiskAccess),
-                detail: "Loop needs Full Disk Access to read your local Messages database.",
+                detail: "Nudge needs Full Disk Access to read your local Messages database.",
                 primaryTitle: "Open System Settings",
                 primarySystemImage: "lock.open",
                 primaryAction: { model.openSettings(for: .fullDiskAccess) },
                 secondaryTitle: nil,
                 secondaryAction: nil,
-                helperText: "In Privacy & Security > Full Disk Access, add or enable Loop. If macOS asks you to reopen the app, do that and come back to this screen."
+                helperText: "In Privacy & Security > Full Disk Access, add or enable Nudge. If macOS asks you to reopen the app, do that and come back to this screen."
             )
 
             SourceSetupCard(
@@ -786,7 +786,7 @@ private struct MessagesStep: View {
                 systemImage: "square.and.arrow.down",
                 readiness: model.messagesReadiness,
                 status: model.health(for: .appleMessages),
-                detail: "Import the last 30 days so Loop can build your first alert queue.",
+                detail: "Import the last 30 days so Nudge can build your first alert queue.",
                 primaryTitle: "Import Messages",
                 primarySystemImage: "message.fill",
                 primaryDisabled: !model.canImportMessages,
@@ -799,7 +799,7 @@ private struct MessagesStep: View {
                 systemImage: "person.crop.circle.badge.checkmark",
                 readiness: model.contactsReadiness,
                 status: model.health(for: .contacts),
-                detail: "Contacts help Loop show names instead of phone numbers or email addresses.",
+                detail: "Contacts help Nudge show names instead of phone numbers or email addresses.",
                 primaryTitle: "Request Contacts",
                 primarySystemImage: "person.2",
                 primaryDisabled: !model.canRequestContacts,
@@ -808,8 +808,8 @@ private struct MessagesStep: View {
             )
 
             SetupPathBox(lines: [
-                "Loop imports read-only copies into its local cache.",
-                "Contacts are optional. Without Contacts, Loop can still work.",
+                "Nudge imports read-only copies into its local cache.",
+                "Contacts are optional. Without Contacts, Nudge can still work.",
                 "After the first import, the Refresh button updates Messages and alerts."
             ])
         }
@@ -905,7 +905,7 @@ private struct PrivacyStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Privacy",
-                subtitle: "Loop keeps imported Messages and generated suggestions in a local SQLite database for this alpha."
+                subtitle: "Nudge keeps imported Messages and generated suggestions in a local SQLite database for this alpha."
             )
 
             SetupPathBox(lines: [
@@ -923,7 +923,7 @@ private struct PrivacyStep: View {
                 Button("Delete Imported Messages Cache", role: .destructive) {
                     model.clearImportedConversationCache()
                 }
-                Button("Delete All Local Loop Data", role: .destructive) {
+                Button("Delete All Local Nudge Data", role: .destructive) {
                     model.eraseAllData()
                 }
             }
@@ -932,7 +932,7 @@ private struct PrivacyStep: View {
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 private struct DiagnosticsSettingsStep: View {
     @ObservedObject var model: OnboardingViewModel
 
@@ -983,7 +983,7 @@ private struct DiagnosticsSettingsStep: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } else if model.appleMessagesDecodeTraceReport == nil {
-                    Text("Run the Mom/Hunter trace after granting Full Disk Access to see exactly where each outgoing body is stored. Snippets stay in memory and are not written to Loop storage.")
+                    Text("Run the Mom/Hunter trace after granting Full Disk Access to see exactly where each outgoing body is stored. Snippets stay in memory and are not written to Nudge storage.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -1054,7 +1054,7 @@ private struct OnboardingMessagesDecodeTraceView: View {
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            Text("Temporary local trace only. Snippets are not written to Loop storage or files.")
+            Text("Temporary local trace only. Snippets are not written to Nudge storage or files.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1146,20 +1146,20 @@ private struct AboutStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
-                title: "How Loop Works",
-                subtitle: "Loop turns recent Messages into a small queue of conversations that may need your attention."
+                title: "How Nudge Works",
+                subtitle: "Nudge turns recent Messages into a small queue of conversations that may need your attention."
             )
 
             VStack(alignment: .leading, spacing: 14) {
                 GuideSection(
                     systemImage: "message.badge",
                     title: "1. Connect Messages",
-                    detail: "Loop reviews recent Apple Messages locally and looks for conversations with unanswered questions, deadlines, reminders, or follow-ups."
+                    detail: "Nudge reviews recent Apple Messages locally and looks for conversations with unanswered questions, deadlines, reminders, or follow-ups."
                 )
                 GuideSection(
                     systemImage: "arrow.clockwise",
                     title: "2. Refresh the queue",
-                    detail: "Use Refresh whenever you want to recheck Messages. Loop also refreshes in the background and replaces older active alerts when newer messages matter."
+                    detail: "Use Refresh whenever you want to recheck Messages. Nudge also refreshes in the background and replaces older active alerts when newer messages matter."
                 )
                 GuideSection(
                     systemImage: "checkmark.circle",
@@ -1188,7 +1188,7 @@ private struct SummaryStep: View {
         VStack(alignment: .leading, spacing: 18) {
             StepHeader(
                 title: "Setup summary",
-                subtitle: "You can finish with missing optional permissions. Loop will keep showing degraded states honestly."
+                subtitle: "You can finish with missing optional permissions. Nudge will keep showing degraded states honestly."
             )
 
             VStack(spacing: 10) {
@@ -1235,7 +1235,7 @@ private struct StepHeader: View {
 }
 
 private struct PrincipleRow: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var systemImage: String
     var title: String
@@ -1444,7 +1444,7 @@ private struct SourceSummaryRow: View {
 }
 
 private struct SetupPathBox: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var lines: [String]
 
@@ -1531,7 +1531,7 @@ private struct HealthStatusPill: View {
 }
 
 private struct OperationalStatusSidebarView: View {
-    var status: LoopOperationalStatus
+    var status: NudgeOperationalStatus
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1556,7 +1556,7 @@ private struct OperationalStatusSidebarView: View {
 }
 
 private struct GuideSection: View {
-    @Environment(\.loopPalette) private var palette
+    @Environment(\.nudgePalette) private var palette
 
     var systemImage: String
     var title: String

@@ -3,27 +3,27 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/.build/release"
-DIST_DIR="$ROOT_DIR/.build/LoopAlpha"
-APP_DIR="$DIST_DIR/Loop.app"
+DIST_DIR="$ROOT_DIR/.build/NudgeAlpha"
+APP_DIR="$DIST_DIR/Nudge.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 STAGING_DIR="$DIST_DIR/dmg-staging"
-DMG_PATH="$DIST_DIR/Loop-alpha.dmg"
-VERSION="${LOOP_VERSION:-0.1.0}"
-BUILD_NUMBER="${LOOP_BUILD_NUMBER:-1}"
-IDENTITY="${LOOP_DEVELOPER_ID_APPLICATION:-}"
-ENTITLEMENTS="$ROOT_DIR/scripts/Loop.entitlements"
+DMG_PATH="$DIST_DIR/Nudge-alpha.dmg"
+VERSION="${NUDGE_VERSION:-0.1.0}"
+BUILD_NUMBER="${NUDGE_BUILD_NUMBER:-1}"
+IDENTITY="${NUDGE_DEVELOPER_ID_APPLICATION:-}"
+ENTITLEMENTS="$ROOT_DIR/scripts/Nudge.entitlements"
 
 cd "$ROOT_DIR"
-swift build -c release --product Loop
+swift build -c release --product Nudge
 
 rm -rf "$APP_DIR" "$STAGING_DIR" "$DMG_PATH"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
-cp "$BUILD_DIR/Loop" "$MACOS_DIR/Loop"
-if [[ -d "$BUILD_DIR/Loop_MinderCore.bundle" ]]; then
-  cp -R "$BUILD_DIR/Loop_MinderCore.bundle" "$RESOURCES_DIR/Loop_MinderCore.bundle"
+cp "$BUILD_DIR/Nudge" "$MACOS_DIR/Nudge"
+if [[ -d "$BUILD_DIR/Nudge_MinderCore.bundle" ]]; then
+  cp -R "$BUILD_DIR/Nudge_MinderCore.bundle" "$RESOURCES_DIR/Nudge_MinderCore.bundle"
 elif [[ -d "$BUILD_DIR/Minder_MinderCore.bundle" ]]; then
   cp -R "$BUILD_DIR/Minder_MinderCore.bundle" "$RESOURCES_DIR/Minder_MinderCore.bundle"
 fi
@@ -36,13 +36,13 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>Loop</string>
+  <string>Nudge</string>
   <key>CFBundleIdentifier</key>
-  <string>com.kainoanishida.loop.alpha</string>
+  <string>com.kainoanishida.nudge.alpha</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Loop</string>
+  <string>Nudge</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -53,23 +53,23 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
-  <key>LoopReleaseChannel</key>
+  <key>NudgeReleaseChannel</key>
   <string>alpha</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>Loop creates calendar events only after you confirm a suggested event.</string>
+  <string>Nudge creates calendar events only after you confirm a suggested event.</string>
   <key>NSCalendarsUsageDescription</key>
-  <string>Loop creates calendar events only after you confirm a suggested event.</string>
+  <string>Nudge creates calendar events only after you confirm a suggested event.</string>
   <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-  <string>Loop asks for write-only calendar access to save confirmed event drafts.</string>
+  <string>Nudge asks for write-only calendar access to save confirmed event drafts.</string>
   <key>NSContactsUsageDescription</key>
-  <string>Loop uses Contacts locally to show names instead of phone numbers or email handles in imported Messages.</string>
+  <string>Nudge uses Contacts locally to show names instead of phone numbers or email handles in imported Messages.</string>
   <key>NSRemindersFullAccessUsageDescription</key>
-  <string>Loop creates reminders only after you confirm a suggested reminder.</string>
+  <string>Nudge creates reminders only after you confirm a suggested reminder.</string>
 </dict>
 </plist>
 PLIST
 
-chmod +x "$MACOS_DIR/Loop"
+chmod +x "$MACOS_DIR/Nudge"
 
 if [[ -n "$IDENTITY" ]]; then
   codesign --force --deep --options runtime --timestamp --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP_DIR"
@@ -81,16 +81,16 @@ codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 spctl --assess --type execute --verbose "$APP_DIR" || true
 
 mkdir -p "$STAGING_DIR"
-cp -R "$APP_DIR" "$STAGING_DIR/Loop.app"
+cp -R "$APP_DIR" "$STAGING_DIR/Nudge.app"
 ln -s /Applications "$STAGING_DIR/Applications"
-hdiutil create -volname "Loop Alpha" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "Nudge Alpha" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
 
-if [[ -n "${LOOP_NOTARYTOOL_PROFILE:-}" ]]; then
-  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$LOOP_NOTARYTOOL_PROFILE" --wait
+if [[ -n "${NUDGE_NOTARYTOOL_PROFILE:-}" ]]; then
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NUDGE_NOTARYTOOL_PROFILE" --wait
   xcrun stapler staple "$DMG_PATH"
   spctl --assess --type open --verbose "$DMG_PATH"
 else
-  echo "Skipping notarization. Set LOOP_NOTARYTOOL_PROFILE to notarize with xcrun notarytool."
+  echo "Skipping notarization. Set NUDGE_NOTARYTOOL_PROFILE to notarize with xcrun notarytool."
 fi
 
 echo "Built $APP_DIR"

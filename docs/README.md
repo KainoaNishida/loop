@@ -1,10 +1,10 @@
-# Loop macOS Documentation
+# Nudge macOS Documentation
 
 ## Purpose
 
-This directory contains the product and technical documentation package for Loop, a macOS-first assistant that monitors user-authorized Apple Messages locally, then turns conversational commitments into actionable suggestions.
+This directory contains the product and technical documentation package for Nudge, a macOS-first assistant that monitors user-authorized Apple Messages locally, then turns conversational commitments into actionable suggestions.
 
-The v1 product is designed as a direct-distribution Mac app, not a Mac App Store-first app. This lets Loop prioritize explicit setup, local permissions, and a background helper while keeping raw conversation data local by default.
+The v1 product is designed as a direct-distribution Mac app, not a Mac App Store-first app. This lets Nudge prioritize explicit setup, local permissions, and a background helper while keeping raw conversation data local by default.
 
 ## Canonical Product Decisions
 
@@ -14,7 +14,7 @@ The v1 product is designed as a direct-distribution Mac app, not a Mac App Store
 - Background behavior: user-approved Login Item or LaunchAgent.
 - Apple Messages: read-only local ingestion where available, gated by Full Disk Access and treated as schema-sensitive.
 - AI processing: hybrid local-first. Raw message text stays on-device by default; cloud AI is optional and consent-gated.
-- Action model: Loop may draft suggestions automatically, but user confirmation is required before creating calendar/reminder items or opening/sending replies.
+- Action model: Nudge may draft suggestions automatically, but user confirmation is required before creating calendar/reminder items or opening/sending replies.
 
 ## Document Map
 
@@ -28,7 +28,7 @@ The v1 product is designed as a direct-distribution Mac app, not a Mac App Store
 
 ## V1 Product Boundary
 
-Loop v1 is a personal Mac utility for power users who are willing to complete a deliberate setup in exchange for less manual conversation tracking afterward. It is not a messaging client, and it is not an autonomous agent that sends messages without confirmation.
+Nudge v1 is a personal Mac utility for power users who are willing to complete a deliberate setup in exchange for less manual conversation tracking afterward. It is not a messaging client, and it is not an autonomous agent that sends messages without confirmation.
 
 The product should feel useful even when some permissions are missing. Every permission-gated feature must have a visible health state and a graceful fallback.
 

@@ -271,7 +271,7 @@ public struct GeminiRequestBuilder {
                     "parts": [
                         [
                             "text": """
-                    You are Loop, a privacy-first assistant that ranks conversation threads for whether the local user needs to act.
+                    You are Nudge, a privacy-first assistant that ranks conversation threads for whether the local user needs to act.
                     Judge each candidate thread as a whole conversation. Return one decision per candidate thread.
                     Use shouldAlert=false for closed threads, completed asks, or messages directed to another person.
                     Use shouldAlert=true when the local user plausibly needs to reply, schedule, remember, follow through, decide, or simply review a still-open recent thread.

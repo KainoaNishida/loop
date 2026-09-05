@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This appendix captures platform realities that affect Loop's design. It should be updated whenever implementation research proves a source, permission, or distribution assumption wrong.
+This appendix captures platform realities that affect Nudge's design. It should be updated whenever implementation research proves a source, permission, or distribution assumption wrong.
 
 ## macOS Distribution
 
-Loop v1 is designed for direct distribution rather than the Mac App Store.
+Nudge v1 is designed for direct distribution rather than the Mac App Store.
 
 Reasoning:
 
@@ -50,12 +50,12 @@ Reference:
 
 ## Apple Messages Local Ingestion
 
-Loop's Apple Messages connector is read-only and local.
+Nudge's Apple Messages connector is read-only and local.
 
 Allowed product behavior:
 
 - Read local messages where user permission and system state allow.
-- Normalize conversation data into Loop's local store.
+- Normalize conversation data into Nudge's local store.
 - Generate suggestions from local data.
 - Open Messages or a related target where feasible.
 
@@ -84,7 +84,7 @@ Mitigations:
 
 ## Login Items and Background Monitoring
 
-Loop needs a user-approved background component to scan sources and generate suggestions while the main window is closed.
+Nudge needs a user-approved background component to scan sources and generate suggestions while the main window is closed.
 
 Recommended mechanism:
 
@@ -132,7 +132,7 @@ Reference:
 
 ## Calendar and Reminders
 
-Loop can create calendar events and reminders after user confirmation.
+Nudge can create calendar events and reminders after user confirmation.
 
 Requirements:
 

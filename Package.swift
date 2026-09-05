@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Loop",
+    name: "Nudge",
     platforms: [
         .macOS(.v14)
     ],
@@ -13,8 +13,8 @@ let package = Package(
             targets: ["MinderCore"]
         ),
         .executable(
-            name: "Loop",
-            targets: ["Loop"]
+            name: "Nudge",
+            targets: ["Nudge"]
         )
     ],
     targets: [
@@ -35,7 +35,7 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "Loop",
+            name: "Nudge",
             dependencies: ["MinderCore"],
             path: "Sources/MinderApp"
         ),
@@ -49,7 +49,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MinderAppTests",
-            dependencies: ["Loop", "MinderCore"],
+            dependencies: ["Nudge", "MinderCore"],
             path: "Tests/MinderAppTests"
         )
     ]

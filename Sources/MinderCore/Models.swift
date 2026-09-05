@@ -177,7 +177,7 @@ public struct ConversationSource: Identifiable, Codable, Equatable {
     }
 }
 
-#if LOOP_INTERNAL_DIAGNOSTICS
+#if NUDGE_INTERNAL_DIAGNOSTICS
 public enum GeminiDiagnosticOutcome: String, Codable, CaseIterable, Hashable {
     case success
     case failure

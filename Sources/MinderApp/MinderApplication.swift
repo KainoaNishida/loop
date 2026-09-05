@@ -43,7 +43,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
                 store: store,
                 permissionService: permissionService,
                 messagesImporter: messagesImporter,
-                alertNotifier: LoopUserNotificationService()
+                alertNotifier: NudgeUserNotificationService()
             )
             model.showQueueWindow = { [weak self] in
                 Task { @MainActor in
@@ -70,7 +70,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
             self.popover = popover
 
             let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            statusItem.button?.image = NSImage(systemSymbolName: "checklist.checked", accessibilityDescription: "Loop")
+            statusItem.button?.image = NSImage(systemSymbolName: "checklist.checked", accessibilityDescription: "Nudge")
             statusItem.button?.target = self
             statusItem.button?.action = #selector(togglePopover)
             self.statusItem = statusItem
@@ -145,8 +145,8 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
     }
 
     private func updateStatusItemTitle() {
-        statusItem?.button?.title = " Loop"
-        statusItem?.button?.toolTip = "Open Loop"
+        statusItem?.button?.title = " Nudge"
+        statusItem?.button?.toolTip = "Open Nudge"
     }
 
     @MainActor
@@ -185,7 +185,7 @@ final class MinderApplication: NSObject, NSApplicationDelegate, @unchecked Senda
             backing: .buffered,
             defer: false
         )
-        window.title = "Loop Queue"
+        window.title = "Nudge Queue"
         window.center()
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: InboxView(model: viewModel, settingsModel: settingsViewModel))
